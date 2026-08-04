@@ -7,14 +7,35 @@
 #include <thread>
 #include <fstream>
 #include <cstring>
+#include <queue>
+#include <functional>
+#include <unordered_map>
 
 namespace NekoArchive {
+
+// Forward declare HuffmanNode from compressor for reuse
+// But we'll just reimplement it here to avoid linking issues
 
 struct Decompressor::Impl {
     std::string password;
     int threads;
     
     Impl() : threads(std::thread::hardware_concurrency()) {}
+    
+    struct HuffmanNode {
+        uint8_t symbol;
+        int freq;
+        HuffmanNode* left;
+        HuffmanNode* right;
+        HuffmanNode(uint8_t s, int f) : symbol(s), freq(f), left(nullptr), right(nullptr) {}
+        ~HuffmanNode() { delete left; delete right; }
+    };
+    
+    struct HuffmanCompare {
+        bool operator()(HuffmanNode* a, HuffmanNode* b) {
+            return a->freq > b->freq;
+        }
+    };
     
     std::vector<uint8_t> lz77_decompress(const std::vector<uint8_t>& input) {
         if (input.empty()) return {};
@@ -46,11 +67,77 @@ struct Decompressor::Impl {
     std::vector<uint8_t> huffman_decode(const std::vector<uint8_t>& input) {
         if (input.empty()) return {};
         
-        // Since we're using Zstd for CAT mode and LZMA for TIGER mode,
-        // Huffman decode is only needed for HARE mode (lz77 + huffman)
-        // For simplicity, we'll return the input and let lz77 handle it
-        // In practice, HARE mode will just use lz77 without entropy coding
-        return input;
+        size_t pos = 0;
+        
+        // Read number of symbols
+        uint8_t num_symbols = input[pos++];
+        if (num_symbols == 0) return {};
+        
+        // Read frequency table
+        int freq[256] = {0};
+        for (int i = 0; i < num_symbols; ++i) {
+            uint8_t symbol = input[pos++];
+            uint32_t f = input[pos++] | (input[pos++] << 8) | (input[pos++] << 16) | (input[pos++] << 24);
+            freq[symbol] = f;
+        }
+        
+        // Rebuild Huffman tree
+        std::priority_queue<HuffmanNode*, std::vector<HuffmanNode*>, HuffmanCompare> pq;
+        for (int i = 0; i < 256; ++i) {
+            if (freq[i] > 0) {
+                pq.push(new HuffmanNode(static_cast<uint8_t>(i), freq[i]));
+            }
+        }
+        
+        if (pq.empty()) return {};
+        
+        while (pq.size() > 1) {
+            HuffmanNode* left = pq.top(); pq.pop();
+            HuffmanNode* right = pq.top(); pq.pop();
+            HuffmanNode* parent = new HuffmanNode(0, left->freq + right->freq);
+            parent->left = left;
+            parent->right = right;
+            pq.push(parent);
+        }
+        
+        HuffmanNode* root = pq.top();
+        
+        // Read padding and bit length
+        uint8_t padding = input[pos++];
+        uint32_t bit_length = input[pos++] | (input[pos++] << 8) | (input[pos++] << 16) | (input[pos++] << 24);
+        
+        // Reconstruct bitstring
+        std::string bitstring;
+        bitstring.reserve(bit_length);
+        
+        size_t total_bits = (input.size() - pos) * 8 - padding;
+        for (size_t i = pos; i < input.size() && bitstring.size() < bit_length; ++i) {
+            uint8_t byte = input[i];
+            for (int j = 7; j >= 0 && bitstring.size() < bit_length; --j) {
+                bitstring += (byte & (1 << j)) ? '1' : '0';
+            }
+        }
+        
+        // Decode using the tree
+        std::vector<uint8_t> output;
+        output.reserve(bit_length);
+        
+        HuffmanNode* current = root;
+        for (char c : bitstring) {
+            if (c == '0') {
+                current = current->left;
+            } else {
+                current = current->right;
+            }
+            
+            if (!current->left && !current->right) {
+                output.push_back(current->symbol);
+                current = root;
+            }
+        }
+        
+        delete root;
+        return output;
     }
     
     std::vector<uint8_t> zstd_decompress(const std::vector<uint8_t>& input, size_t original_size) {
@@ -146,36 +233,39 @@ std::vector<uint8_t> Decompressor::decompress(const std::vector<uint8_t>& input)
     
     std::vector<uint8_t> result = input;
     
+    // Decrypt if password is set
     if (!impl->password.empty()) {
         result = impl->decrypt(result);
     }
     
+    // Try to detect compression type and decode
     std::vector<uint8_t> output;
     
-    // Try Zstd decompression first (CAT mode)
-    output = impl->zstd_decompress(result, result.size() * 4);
-    if (!output.empty()) {
-        // Check if it looks reasonable
-        if (output.size() > 0 && output.size() < result.size() * 20) {
-            return output;
-        }
-    }
-    
-    // Try LZMA decompression (TIGER mode)
-    output = impl->lzma_decompress(result, result.size() * 4);
-    if (!output.empty()) {
-        if (output.size() > 0 && output.size() < result.size() * 20) {
-            return output;
-        }
-    }
-    
-    // Try LZ77 decompression (HARE mode)
-    output = impl->lz77_decompress(result);
+    // Try Zstd decompression (CAT mode)
+    // We don't know original size, so try with a generous buffer
+    size_t estimated_size = result.size() * 4;
+    output = impl->zstd_decompress(result, estimated_size);
     if (!output.empty()) {
         return output;
     }
     
-    // If nothing worked, return original
+    // Try LZMA decompression (TIGER mode)
+    estimated_size = result.size() * 4;
+    output = impl->lzma_decompress(result, estimated_size);
+    if (!output.empty()) {
+        return output;
+    }
+    
+    // Try Huffman + LZ77 (HARE mode)
+    output = impl->huffman_decode(result);
+    if (!output.empty()) {
+        output = impl->lz77_decompress(output);
+        if (!output.empty()) {
+            return output;
+        }
+    }
+    
+    // If nothing worked, return original (maybe it wasn't compressed)
     return result;
 }
 
