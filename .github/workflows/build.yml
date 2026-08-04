@@ -1,0 +1,48 @@
+name: Build NekoArchive
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup vcpkg
+      run: |
+        git clone https://github.com/Microsoft/vcpkg.git
+        cd vcpkg
+        .\bootstrap-vcpkg.bat
+        echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_ENV
+        echo "$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_PATH
+    
+    - name: Install dependencies
+      run: |
+        cd vcpkg
+        .\vcpkg install zstd lzma-sdk openssl xxhash
+        .\vcpkg install qt5 --feature "gui widgets"
+    
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+    
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config Release
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: NekoArchive-Windows
+        path: |
+          build/Release/nekocli.exe
+          build/Release/nekogui.exe
