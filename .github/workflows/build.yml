@@ -25,14 +25,17 @@ jobs:
     - name: Install dependencies
       run: |
         cd vcpkg
-        .\vcpkg install zstd lzma-sdk openssl xxhash
-        .\vcpkg install qt5 --feature "gui widgets"
+        .\vcpkg install zstd:x64-windows
+        .\vcpkg install liblzma:x64-windows
+        .\vcpkg install openssl:x64-windows
+        .\vcpkg install xxhash:x64-windows
+        .\vcpkg install qt5:x64-windows
     
     - name: Configure CMake
       run: |
         mkdir build
         cd build
-        cmake .. -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+        cmake .. -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
     
     - name: Build
       run: |
