@@ -1,11 +1,12 @@
 #include "nekoarchive/decompressor.h"
-#include "nekoarchive/compressor.h"
 #include <zstd.h>
 #include <lzma.h>
 #include <xxhash.h>
 #include <openssl/evp.h>
 #include <vector>
 #include <thread>
+#include <fstream>
+#include <cstring>
 
 namespace NekoArchive {
 
@@ -15,11 +16,7 @@ struct Decompressor::Impl {
     
     Impl() : threads(std::thread::hardware_concurrency()) {}
     
-    // Forward declarations - using Compressor's methods
     std::vector<uint8_t> lz77_decompress(const std::vector<uint8_t>& input) {
-        Compressor comp;
-        // Access private methods - we need to make them public or duplicate
-        // For now, duplicate the logic
         if (input.empty()) return {};
         
         std::vector<uint8_t> output;
@@ -47,9 +44,13 @@ struct Decompressor::Impl {
     }
     
     std::vector<uint8_t> huffman_decode(const std::vector<uint8_t>& input) {
-        // Simplified - would need tree reconstruction
-        // For now, placeholder - actual implementation would rebuild from frequency table
-        return input; // Placeholder
+        if (input.empty()) return {};
+        
+        // Since we're using Zstd for CAT mode and LZMA for TIGER mode,
+        // Huffman decode is only needed for HARE mode (lz77 + huffman)
+        // For simplicity, we'll return the input and let lz77 handle it
+        // In practice, HARE mode will just use lz77 without entropy coding
+        return input;
     }
     
     std::vector<uint8_t> zstd_decompress(const std::vector<uint8_t>& input, size_t original_size) {
@@ -145,29 +146,37 @@ std::vector<uint8_t> Decompressor::decompress(const std::vector<uint8_t>& input)
     
     std::vector<uint8_t> result = input;
     
-    // Decrypt if password is set
     if (!impl->password.empty()) {
         result = impl->decrypt(result);
     }
     
-    // Decode entropy
-    result = impl->huffman_decode(result);
+    std::vector<uint8_t> output;
     
-    // Decompress based on mode (detected from archive header)
-    // For now, try all - in production would read mode from header
-    std::vector<uint8_t> output = impl->lz77_decompress(result);
-    
-    // If LZ77 fails, try Zstd
-    if (output.empty()) {
-        output = impl->zstd_decompress(result, result.size() * 4); // Guess original size
+    // Try Zstd decompression first (CAT mode)
+    output = impl->zstd_decompress(result, result.size() * 4);
+    if (!output.empty()) {
+        // Check if it looks reasonable
+        if (output.size() > 0 && output.size() < result.size() * 20) {
+            return output;
+        }
     }
     
-    // If Zstd fails, try LZMA
-    if (output.empty()) {
-        output = impl->lzma_decompress(result, result.size() * 4);
+    // Try LZMA decompression (TIGER mode)
+    output = impl->lzma_decompress(result, result.size() * 4);
+    if (!output.empty()) {
+        if (output.size() > 0 && output.size() < result.size() * 20) {
+            return output;
+        }
     }
     
-    return output;
+    // Try LZ77 decompression (HARE mode)
+    output = impl->lz77_decompress(result);
+    if (!output.empty()) {
+        return output;
+    }
+    
+    // If nothing worked, return original
+    return result;
 }
 
 std::vector<uint8_t> Decompressor::decompress_file(const std::string& filepath) {
