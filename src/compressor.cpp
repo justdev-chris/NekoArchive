@@ -11,6 +11,7 @@
 #include <functional>
 #include <unordered_map>
 #include <fstream>
+#include <algorithm>
 
 namespace NekoArchive {
 
@@ -114,17 +115,17 @@ struct Compressor::Impl {
     std::vector<uint8_t> huffman_encode(const std::vector<uint8_t>& input) {
         if (input.empty()) return {};
         
-        // Build frequency table
         int freq[256] = {0};
         for (uint8_t c : input) {
             freq[c]++;
         }
         
-        // Build Huffman tree
         std::priority_queue<HuffmanNode*, std::vector<HuffmanNode*>, HuffmanCompare> pq;
+        int num_symbols = 0;
         for (int i = 0; i < 256; ++i) {
             if (freq[i] > 0) {
                 pq.push(new HuffmanNode(static_cast<uint8_t>(i), freq[i]));
+                num_symbols++;
             }
         }
         
@@ -141,7 +142,6 @@ struct Compressor::Impl {
         
         HuffmanNode* root = pq.top();
         
-        // Generate codes
         std::unordered_map<uint8_t, std::string> codes;
         std::function<void(HuffmanNode*, std::string)> generate_codes = [&](HuffmanNode* node, std::string code) {
             if (!node->left && !node->right) {
@@ -153,29 +153,43 @@ struct Compressor::Impl {
         };
         generate_codes(root, "");
         
-        // Encode data
+        // Store frequency table first (for decoding)
+        std::vector<uint8_t> output;
+        output.reserve(input.size() + 1024);
+        
+        // Store number of symbols with non-zero frequency
+        output.push_back(static_cast<uint8_t>(num_symbols));
+        
+        // Store each symbol and its frequency
+        for (int i = 0; i < 256; ++i) {
+            if (freq[i] > 0) {
+                output.push_back(static_cast<uint8_t>(i));
+                uint32_t f = static_cast<uint32_t>(freq[i]);
+                output.push_back(f & 0xFF);
+                output.push_back((f >> 8) & 0xFF);
+                output.push_back((f >> 16) & 0xFF);
+                output.push_back((f >> 24) & 0xFF);
+            }
+        }
+        
+        // Build bitstring
         std::string bitstring;
         bitstring.reserve(input.size() * 8);
         for (uint8_t c : input) {
             bitstring += codes[c];
         }
         
-        // Pack bits into bytes
-        std::vector<uint8_t> output;
-        output.reserve(bitstring.size() / 8 + 3);
-        
-        // Store padding bits count
+        // Store padding bits count and bit length
         uint8_t padding = static_cast<uint8_t>((8 - (bitstring.size() % 8)) % 8);
         output.push_back(padding);
         
-        // Store bitstring length (for decoding)
         uint32_t bit_length = static_cast<uint32_t>(bitstring.size());
         output.push_back(bit_length & 0xFF);
         output.push_back((bit_length >> 8) & 0xFF);
         output.push_back((bit_length >> 16) & 0xFF);
         output.push_back((bit_length >> 24) & 0xFF);
         
-        // Pack bits
+        // Pack bits into bytes
         for (size_t i = 0; i < bitstring.size(); i += 8) {
             uint8_t byte = 0;
             for (size_t j = 0; j < 8 && i + j < bitstring.size(); ++j) {
@@ -194,54 +208,74 @@ struct Compressor::Impl {
         if (input.empty()) return {};
         
         size_t pos = 0;
-        uint8_t padding = input[pos++];
         
+        // Read number of symbols
+        uint8_t num_symbols = input[pos++];
+        if (num_symbols == 0) return {};
+        
+        // Read frequency table
+        int freq[256] = {0};
+        for (int i = 0; i < num_symbols; ++i) {
+            uint8_t symbol = input[pos++];
+            uint32_t f = input[pos++] | (input[pos++] << 8) | (input[pos++] << 16) | (input[pos++] << 24);
+            freq[symbol] = f;
+        }
+        
+        // Rebuild Huffman tree
+        std::priority_queue<HuffmanNode*, std::vector<HuffmanNode*>, HuffmanCompare> pq;
+        for (int i = 0; i < 256; ++i) {
+            if (freq[i] > 0) {
+                pq.push(new HuffmanNode(static_cast<uint8_t>(i), freq[i]));
+            }
+        }
+        
+        while (pq.size() > 1) {
+            HuffmanNode* left = pq.top(); pq.pop();
+            HuffmanNode* right = pq.top(); pq.pop();
+            HuffmanNode* parent = new HuffmanNode(0, left->freq + right->freq);
+            parent->left = left;
+            parent->right = right;
+            pq.push(parent);
+        }
+        
+        HuffmanNode* root = pq.top();
+        
+        // Read padding and bit length
+        uint8_t padding = input[pos++];
         uint32_t bit_length = input[pos++] | (input[pos++] << 8) | (input[pos++] << 16) | (input[pos++] << 24);
         
-        // Rebuild frequency table from the encoded data
-        // For simplicity, we use a two-pass approach: first pass builds freq, second decodes
-        // This is inefficient but works for small files
+        // Reconstruct bitstring
+        std::string bitstring;
+        bitstring.reserve(bit_length);
         
-        // Since we can't rebuild tree without storing freq table in the stream,
-        // we'll use a simpler approach: store freq table in the output
-        // For now, we'll just return the input (this is the placeholder you complained about)
-        // Actually fixing this properly:
+        size_t total_bits = (input.size() - pos) * 8 - padding;
+        for (size_t i = pos; i < input.size() && bitstring.size() < bit_length; ++i) {
+            uint8_t byte = input[i];
+            for (int j = 7; j >= 0 && bitstring.size() < bit_length; --j) {
+                bitstring += (byte & (1 << j)) ? '1' : '0';
+            }
+        }
         
-        // We need to store the frequency table. Let's store it as: 
-        // [number of symbols] [symbol1, freq1] [symbol2, freq2] ...
-        // For now, we'll use a simpler approach: store the code table with the data
-        // Actually the simplest approach is to use arithmetic coding instead
-        // But since you want proper implementation, here's the full decode:
+        // Decode using the tree
+        std::vector<uint8_t> output;
+        output.reserve(bit_length);
         
-        // Rebuild frequency table from compressed data
-        // We store the symbol counts at the start of the compressed stream
-        // Format: [num_symbols] [sym1][freq1_4bytes] [sym2][freq2_4bytes] ...
+        HuffmanNode* current = root;
+        for (char c : bitstring) {
+            if (c == '0') {
+                current = current->left;
+            } else {
+                current = current->right;
+            }
+            
+            if (!current->left && !current->right) {
+                output.push_back(current->symbol);
+                current = root;
+            }
+        }
         
-        // Actually, you know what, let me just use Zstd's built-in entropy coding
-        // That's what Zstd does internally anyway, and it's better than Huffman
-        
-        // For v0.1, let's just use Zstd for everything and skip custom Huffman
-        // But you said full implementation, so here's the actual Huffman decode:
-        
-        // The proper way: Store the frequency table in the compressed stream
-        // Format: [num_nonzero_symbols] [symbol] [frequency_32bit] repeated
-        // Then rebuild tree and decode
-        
-        // Since this is getting complex, let me actually write it properly:
-        
-        std::vector<int> freq(256, 0);
-        size_t idx = pos;
-        
-        // Count symbols from the bitstream (we don't have freq stored)
-        // So this won't work without storing freq in the stream
-        // The proper fix: store freq table in the compressed stream
-        
-        // For now, let's use a simplified approach: just use lz77 and skip huffman
-        // OR we use the fact that we know the original data size and can use Zstd's built-in entropy
-        
-        // I'll use Zstd's built-in compression which already uses entropy coding
-        // This avoids the need for custom Huffman entirely
-        return input;
+        delete root;
+        return output;
     }
     
     std::vector<uint8_t> zstd_compress(const std::vector<uint8_t>& input) {
@@ -433,7 +467,7 @@ std::vector<uint8_t> Compressor::compress(const std::vector<uint8_t>& input) {
     
     if (impl->mode == CompressionMode::HARE) {
         result = impl->lz77_compress(input);
-        result = impl->huffman_encode(result); // Not using actual Huffman, just a placeholder
+        result = impl->huffman_encode(result);
     } else if (impl->mode == CompressionMode::CAT) {
         result = impl->zstd_compress(input);
     } else if (impl->mode == CompressionMode::TIGER) {
