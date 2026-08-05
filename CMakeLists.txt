@@ -11,10 +11,11 @@ if(NOT Qt6_FOUND)
     find_package(Qt5 COMPONENTS Widgets REQUIRED)
 endif()
 
-# Find compression libs
-find_package(Zstd REQUIRED)
-find_package(LZMA REQUIRED)
+# Find compression libraries
+find_package(zstd CONFIG REQUIRED)
+find_package(liblzma CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(xxHash CONFIG REQUIRED)
 
 # Core library
 add_library(nekoarchive STATIC
@@ -24,7 +25,12 @@ add_library(nekoarchive STATIC
 )
 
 target_include_directories(nekoarchive PUBLIC include)
-target_link_libraries(nekoarchive Zstd::Zstd LZMA::LZMA OpenSSL::Crypto)
+target_link_libraries(nekoarchive 
+    zstd::libzstd 
+    liblzma::liblzma 
+    OpenSSL::Crypto
+    xxHash::xxhash
+)
 
 # CLI
 add_executable(nekocli src/main.cpp)
