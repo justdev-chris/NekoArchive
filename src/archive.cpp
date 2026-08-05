@@ -1,5 +1,6 @@
 #include "nekoarchive/archive.h"
 #include "nekoarchive/compressor.h"
+#include "nekoarchive/decompressor.h"
 #include <fstream>
 #include <filesystem>
 #include <zstd.h>
