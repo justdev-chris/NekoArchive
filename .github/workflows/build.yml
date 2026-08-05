@@ -29,13 +29,14 @@ jobs:
         .\vcpkg install liblzma:x64-windows
         .\vcpkg install openssl:x64-windows
         .\vcpkg install xxhash:x64-windows
-        .\vcpkg install qt6:x64-windows
+        .\vcpkg install qtbase:x64-windows
+        .\vcpkg install qttools:x64-windows
     
     - name: Configure CMake
       run: |
         mkdir build
         cd build
-        cmake .. -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DQt6_DIR="$env:VCPKG_ROOT/packages/qt6_x64-windows/share/qt6"
+        cmake .. -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
     
     - name: Build
       run: |
