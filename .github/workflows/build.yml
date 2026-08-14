@@ -13,7 +13,7 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup vcpkg
       run: |
         git clone https://github.com/Microsoft/vcpkg.git
@@ -21,7 +21,7 @@ jobs:
         .\bootstrap-vcpkg.bat
         echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_ENV
         echo "$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_PATH
-    
+
     - name: Install dependencies
       run: |
         cd vcpkg
@@ -31,36 +31,34 @@ jobs:
         .\vcpkg install xxhash:x64-windows
         .\vcpkg install qtbase:x64-windows
         .\vcpkg install qttools:x64-windows
-    
+
     - name: Configure CMake
       run: |
         mkdir build
         cd build
         cmake .. -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
-    
+
     - name: Build
       run: |
         cd build
         cmake --build . --config Release
-    
+
     - name: Collect DLLs
-      shell: cmd
+      shell: pwsh
       run: |
         mkdir deploy
         cd build/Release
-        
-        copy nekocli.exe ..\..\deploy\
-        copy nekogui.exe ..\..\deploy\
-        
-        copy "%VCPKG_ROOT%\packages\qtbase_x64-windows\bin\Qt6Core.dll" ..\..\deploy\
-        copy "%VCPKG_ROOT%\packages\qtbase_x64-windows\bin\Qt6Gui.dll" ..\..\deploy\
-        copy "%VCPKG_ROOT%\packages\qtbase_x64-windows\bin\Qt6Widgets.dll" ..\..\deploy\
-        
-        copy "%VCPKG_ROOT%\packages\zstd_x64-windows\bin\zstd.dll" ..\..\deploy\
-        copy "%VCPKG_ROOT%\packages\openssl_x64-windows\bin\libcrypto-3-x64.dll" ..\..\deploy\
-        copy "%VCPKG_ROOT%\packages\openssl_x64-windows\bin\libssl-3-x64.dll" ..\..\deploy\
-        copy "%VCPKG_ROOT%\packages\liblzma_x64-windows\bin\liblzma.dll" ..\..\deploy\
-    
+
+        # Copy executables
+        Copy-Item nekocli.exe ../../deploy/
+        Copy-Item nekogui.exe ../../deploy/
+
+        # Recursively copy ALL DLLs from vcpkg packages
+        $dlls = Get-ChildItem -Recurse "$env:VCPKG_ROOT/packages" -Filter *.dll
+        foreach ($dll in $dlls) {
+            Copy-Item $dll.FullName ../../deploy/ -ErrorAction SilentlyContinue
+        }
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
