@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "dependencies": [
+    {
+      "name": "qtbase",
+      "version>=": "6.7.0"
+    },
+    {
+      "name": "openssl",
+      "version>=": "3.0.0"
+    },
+    {
+      "name": "zstd",
+      "version>=": "1.5.5"
+    },
+    {
+      "name": "liblzma",
+      "version>=": "5.4.0"
+    },
+    {
+      "name": "xxhash",
+      "version>=": "0.8.0"
+    }
+  ]
+}
