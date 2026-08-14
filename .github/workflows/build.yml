@@ -14,6 +14,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    # ============================================
+    # FIX 1: Setup vcpkg properly
+    # ============================================
     - name: Setup vcpkg
       run: |
         git clone https://github.com/Microsoft/vcpkg.git
@@ -22,45 +25,156 @@ jobs:
         echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_ENV
         echo "$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_PATH
 
-    - name: Install dependencies
+    # ============================================
+    # FIX 2: Install ONLY release dependencies
+    # ============================================
+    - name: Install dependencies (Release only)
       run: |
         cd vcpkg
-        .\vcpkg install zstd:x64-windows
-        .\vcpkg install liblzma:x64-windows
-        .\vcpkg install openssl:x64-windows
-        .\vcpkg install xxhash:x64-windows
-        .\vcpkg install qtbase:x64-windows
-        .\vcpkg install qttools:x64-windows
+        # Explicitly install release versions
+        .\vcpkg install zstd:x64-windows-release
+        .\vcpkg install liblzma:x64-windows-release
+        .\vcpkg install openssl:x64-windows-release
+        .\vcpkg install xxhash:x64-windows-release
+        .\vcpkg install qtbase:x64-windows-release
+        .\vcpkg install qttools:x64-windows-release
 
+    # ============================================
+    # FIX 3: Configure with static linking
+    # ============================================
     - name: Configure CMake
       run: |
         mkdir build
         cd build
-        cmake .. -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+        cmake .. `
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+          -DVCPKG_TARGET_TRIPLET=x64-windows-release `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 
+    # ============================================
+    # FIX 4: Build
+    # ============================================
     - name: Build
       run: |
         cd build
         cmake --build . --config Release
 
-    - name: Collect DLLs
+    # ============================================
+    # FIX 5: Create deployment directory
+    # ============================================
+    - name: Prepare deploy folder
       shell: pwsh
       run: |
-        mkdir deploy
-        cd build/Release
+        New-Item -ItemType Directory -Force -Path deploy
 
-        # Copy executables
-        Copy-Item nekocli.exe ../../deploy/
-        Copy-Item nekogui.exe ../../deploy/
+    # ============================================
+    # FIX 6: Copy executables
+    # ============================================
+    - name: Copy executables
+      shell: pwsh
+      run: |
+        Copy-Item build/Release/nekocli.exe deploy/
+        Copy-Item build/Release/nekogui.exe deploy/
 
-        # Recursively copy ALL DLLs from vcpkg packages
-        $dlls = Get-ChildItem -Recurse "$env:VCPKG_ROOT/packages" -Filter *.dll
-        foreach ($dll in $dlls) {
-            Copy-Item $dll.FullName ../../deploy/ -ErrorAction SilentlyContinue
+    # ============================================
+    # FIX 7: Run windeployqt (MOST IMPORTANT)
+    # ============================================
+    - name: Deploy Qt dependencies
+      shell: pwsh
+      run: |
+        # Find windeployqt from vcpkg
+        $windeployqt = Get-ChildItem -Recurse "$env:VCPKG_ROOT/packages" -Filter "windeployqt*.exe" | Select-Object -First 1
+        
+        if ($windeployqt) {
+            # Run windeployqt on the GUI executable
+            & $windeployqt.FullName `
+                --release `
+                --no-compiler-runtime `
+                --no-translations `
+                --no-system-d3d-compiler `
+                --dir deploy `
+                deploy/nekogui.exe
+        } else {
+            Write-Host "Warning: windeployqt not found, Qt DLLs may be missing"
+            # Fallback: manually copy Qt DLLs
+            $qtDlls = Get-ChildItem -Recurse "$env:VCPKG_ROOT/packages" -Filter "Qt6*.dll"
+            foreach ($dll in $qtDlls) {
+                Copy-Item $dll.FullName deploy/ -ErrorAction SilentlyContinue
+            }
         }
 
+    # ============================================
+    # FIX 8: Copy ONLY RELEASE dependency DLLs
+    # ============================================
+    - name: Copy dependency DLLs (Release only)
+      shell: pwsh
+      run: |
+        # Only get DLLs from release packages (not debug)
+        $releaseDlls = Get-ChildItem -Recurse "$env:VCPKG_ROOT/packages" -Filter "*.dll" | Where-Object {
+            $_.FullName -notmatch "debug" -and
+            $_.FullName -notmatch "bin" -and
+            $_.FullName -notmatch "tools" -and
+            $_.Name -notmatch "D\.dll$" -and  # Exclude debug DLLs
+            $_.Name -notmatch "^lib"          # Exclude static libs
+        }
+        
+        foreach ($dll in $releaseDlls) {
+            # Skip if it's a debug DLL (contains 'D' before .dll)
+            if ($dll.Name -match "D\.dll$") {
+                Write-Host "Skipping debug DLL: $($dll.Name)"
+                continue
+            }
+            Copy-Item $dll.FullName deploy/ -ErrorAction SilentlyContinue
+        }
+        
+        # Also copy vcpkg's runtime DLLs (VC++ Redist)
+        $runtimeDlls = Get-ChildItem -Recurse "$env:VCPKG_ROOT/packages" -Filter "vcruntime*.dll" | Where-Object {
+            $_.FullName -notmatch "debug"
+        }
+        foreach ($dll in $runtimeDlls) {
+            Copy-Item $dll.FullName deploy/ -ErrorAction SilentlyContinue
+        }
+
+    # ============================================
+    # FIX 9: Copy Qt plugins (needed for GUI)
+    # ============================================
+    - name: Copy Qt plugins
+      shell: pwsh
+      run: |
+        $qtPlugins = Get-ChildItem -Recurse "$env:VCPKG_ROOT/packages" -Filter "plugins" | Where-Object {
+            $_.FullName -notmatch "debug" -and
+            $_.FullName -match "qtbase"
+        } | Select-Object -First 1
+        
+        if ($qtPlugins) {
+            Copy-Item -Recurse $qtPlugins.FullName deploy/plugins/
+        }
+
+    # ============================================
+    # FIX 10: Clean up - remove any remaining debug DLLs
+    # ============================================
+    - name: Remove debug DLLs
+      shell: pwsh
+      run: |
+        Get-ChildItem deploy -Filter "*D.dll" | Remove-Item -Force
+        Get-ChildItem deploy -Filter "*debug*" | Remove-Item -Force -Recurse
+
+    # ============================================
+    # FIX 11: Create zip for easy distribution
+    # ============================================
+    - name: Create zip archive
+      shell: pwsh
+      run: |
+        Compress-Archive -Path deploy/* -DestinationPath NekoArchive-Windows.zip
+
+    # ============================================
+    # FIX 12: Upload artifacts
+    # ============================================
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: NekoArchive-Windows
-        path: deploy/*
+        path: |
+          deploy/*
+          NekoArchive-Windows.zip
