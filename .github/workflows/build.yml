@@ -1,10 +1,6 @@
 name: Build NekoArchive
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -49,11 +45,9 @@ jobs:
         mkdir deploy
         cd build/Release
 
-        # Copy executables
         Copy-Item nekocli.exe ../../deploy/
         Copy-Item nekogui.exe ../../deploy/
 
-        # Recursively copy ALL DLLs from vcpkg packages
         $dlls = Get-ChildItem -Recurse "$env:VCPKG_ROOT/packages" -Filter *.dll
         foreach ($dll in $dlls) {
             Copy-Item $dll.FullName ../../deploy/ -ErrorAction SilentlyContinue
