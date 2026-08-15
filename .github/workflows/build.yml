@@ -12,7 +12,7 @@ jobs:
       uses: actions/checkout@v4
 
     # -----------------------------
-    # Install Qt (prebuilt, fast)
+    # Install Qt (prebuilt)
     # -----------------------------
     - name: Install Python
       uses: actions/setup-python@v5
@@ -27,16 +27,9 @@ jobs:
         aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
     - name: Set Qt env
-      run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
-
-    # -----------------------------
-    # Install OpenSSL (prebuilt)
-    # -----------------------------
-    - name: Download OpenSSL Win64
       run: |
-        curl -L -o openssl.zip https://download.firedaemon.com/FireDaemon-OpenSSL/openssl-1.1.1w-win64.zip
-        tar -xf openssl.zip -C $env:USERPROFILE
-        echo "OPENSSL_DIR=$env:USERPROFILE\openssl-1.1.1w-win64" >> $env:GITHUB_ENV
+        echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
+        echo "OPENSSL_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
 
     # -----------------------------
     # Install vcpkg (only small libs)
