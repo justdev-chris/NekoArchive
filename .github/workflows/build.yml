@@ -1,4 +1,4 @@
-name: Build NekoArchive
+name: Build NekoArchive (Fast OpenSSL via FireDaemon)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
       uses: actions/checkout@v4
 
     # -----------------------------
-    # Install Qt (prebuilt)
+    # Install Qt
     # -----------------------------
     - name: Install Python
       uses: actions/setup-python@v5
@@ -37,7 +37,7 @@ jobs:
         winget install FireDaemon.OpenSSL --silent --accept-source-agreements --accept-package-agreements
 
     # -----------------------------
-    # Install vcpkg (workspace path)
+    # Install vcpkg
     # -----------------------------
     - name: Clone vcpkg
       run: git clone https://github.com/microsoft/vcpkg $env:GITHUB_WORKSPACE\vcpkg
@@ -58,6 +58,7 @@ jobs:
       run: |
         cmake -B build -S . `
           -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake" `
+          -DVCPKG_CMAKE_SYSTEM_IGNORE_EXTERNAL_OPENSSL=ON `
           -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" `
           -DOPENSSL_INCLUDE_DIR="C:/Program Files/FireDaemon OpenSSL/include" `
           -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libcrypto.lib" `
@@ -72,14 +73,9 @@ jobs:
     # -----------------------------
     - name: Copy Qt + OpenSSL DLLs
       run: |
-        # Qt DLLs
         Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\
-
-        # Qt platform plugins
         New-Item -ItemType Directory -Force -Path build\Release\platforms
         Copy-Item "$env:QT_DIR\plugins\platforms\*" build\Release\platforms -Recurse
-
-        # FireDaemon OpenSSL DLLs
         Copy-Item "C:/Program Files/FireDaemon OpenSSL/bin/libcrypto-3-x64.dll" build\Release\
         Copy-Item "C:/Program Files/FireDaemon OpenSSL/bin/libssl-3-x64.dll" build\Release\
 
