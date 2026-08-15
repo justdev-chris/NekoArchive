@@ -10,6 +10,13 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v10
+      with:
+        vcpkgDirectory: '${{ github.workspace }}/vcpkg'
+        vcpkgGitCommitId: '2024.08.15'
+        runVcpkgInstall: true
+
     - name: Download Tiny-AES-C
       run: |
         cd include
@@ -20,7 +27,7 @@ jobs:
         curl.exe -L -o src/crypto/aes.c https://raw.githubusercontent.com/kokke/tiny-AES-c/master/aes.c
 
     - name: Configure CMake
-      run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+      run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
 
     - name: Build
       run: cmake --build build --config Release
