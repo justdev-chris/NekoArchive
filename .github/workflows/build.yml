@@ -59,15 +59,14 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake" `
           -DVCPKG_CMAKE_SYSTEM_IGNORE_EXTERNAL_OPENSSL=ON `
           -DVCPKG_MANIFEST_MODE=OFF `
-          -DVCPKG_TARGET_TRIPLET="" `
+          -DVCPKG_TARGET_TRIPLET="x64-windows" `
           -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" `
           -DOPENSSL_INCLUDE_DIR="C:/Program Files/FireDaemon OpenSSL/include" `
           -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libcrypto.lib" `
           -DOPENSSL_SSL_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libssl.lib" `
           -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
-
-    - name: Build
-      run: cmake --build build --config Release
+        - name: Build
+          run: cmake --build build --config Release
 
     # -----------------------------
     # Copy DLLs (Qt + OpenSSL)
