@@ -10,29 +10,25 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup vcpkg
+    - name: Setup vcpkg (artifacts mode)
       run: |
-        git clone https://github.com/Microsoft/vcpkg.git
+        git clone https://github.com/microsoft/vcpkg.git
         cd vcpkg
-        .\bootstrap-vcpkg.bat
+        ./bootstrap-vcpkg.bat
         echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_ENV
         echo "$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_PATH
 
-    - name: Install dependencies
+    - name: Install vcpkg artifacts
       run: |
         cd vcpkg
-        .\vcpkg install zstd:x64-windows
-        .\vcpkg install liblzma:x64-windows
-        .\vcpkg install openssl:x64-windows
-        .\vcpkg install xxhash:x64-windows
-        .\vcpkg install qtbase:x64-windows
-        .\vcpkg install qttools:x64-windows
+        ./vcpkg x-update-baseline
+        ./vcpkg x-install
 
     - name: Configure CMake
       run: |
         mkdir build
         cd build
-        cmake .. -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+        cmake .. -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
     - name: Build
       run: |
@@ -48,7 +44,7 @@ jobs:
         Copy-Item nekocli.exe ../../deploy/
         Copy-Item nekogui.exe ../../deploy/
 
-        $dlls = Get-ChildItem -Recurse "$env:VCPKG_ROOT/packages" -Filter *.dll
+        $dlls = Get-ChildItem -Recurse "$env:VCPKG_ROOT/artifacts" -Filter *.dll
         foreach ($dll in $dlls) {
             Copy-Item $dll.FullName ../../deploy/ -ErrorAction SilentlyContinue
         }
