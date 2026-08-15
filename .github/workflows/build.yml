@@ -19,41 +19,25 @@ jobs:
     - name: Install aqtinstall
       run: pip install aqtinstall
 
-    - name: Install Qt 6.6.3 MSVC64
+    - name: Install Qt
       run: aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
     - name: Set Qt env
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
 
-    # Download ALL libraries as ZIP files only (no installers)
-    - name: Download OpenSSL (ZIP)
+    # Download deps using cmd (more reliable than PowerShell)
+    - name: Download dependencies
+      shell: cmd
       run: |
         mkdir C:\deps
-        $url = "https://github.com/slproweb/opensslhashes/releases/download/1.1.1w/Win64OpenSSL_Light-1_1_1w.zip"
-        curl.exe -L -o C:\deps\openssl.zip $url
-        Expand-Archive -Path C:\deps\openssl.zip -DestinationPath C:\deps\openssl -Force
-        dir C:\deps\openssl
-
-    - name: Download zstd (ZIP)
-      run: |
-        $url = "https://github.com/facebook/zstd/releases/download/v1.5.5/zstd-v1.5.5-win64.zip"
-        curl.exe -L -o C:\deps\zstd.zip $url
-        Expand-Archive -Path C:\deps\zstd.zip -DestinationPath C:\deps\zstd -Force
-        dir C:\deps\zstd
-
-    - name: Download liblzma (ZIP)
-      run: |
-        $url = "https://github.com/tukaani-project/xz/releases/download/v5.4.4/xz-5.4.4-windows.zip"
-        curl.exe -L -o C:\deps\liblzma.zip $url
-        Expand-Archive -Path C:\deps\liblzma.zip -DestinationPath C:\deps\liblzma -Force
-        dir C:\deps\liblzma
-
-    - name: Download xxHash (ZIP)
-      run: |
-        $url = "https://github.com/Cyan4973/xxHash/releases/download/v0.8.1/xxHash-0.8.1-win64.zip"
-        curl.exe -L -o C:\deps\xxhash.zip $url
-        Expand-Archive -Path C:\deps\xxhash.zip -DestinationPath C:\deps\xxhash -Force
-        dir C:\deps\xxhash
+        cd C:\deps
+        echo Downloading OpenSSL...
+        powershell -Command "(New-Object System.Net.ServicePointManager).SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; Invoke-WebRequest -Uri 'https://github.com/slproweb/opensslhashes/releases/download/1.1.1w/Win64OpenSSL_Light-1_1_1w.zip' -OutFile 'openssl.zip' -ErrorAction Stop"
+        powershell -Command "Expand-Archive -Path 'openssl.zip' -DestinationPath 'openssl' -Force"
+        
+        echo Downloading zstd...
+        powershell -Command "(New-Object System.Net.ServicePointManager).SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; Invoke-WebRequest -Uri 'https://github.com/facebook/zstd/releases/download/v1.5.5/zstd-v1.5.5-win64.zip' -OutFile 'zstd.zip' -ErrorAction Stop"
+        powershell -Command "Expand-Archive -Path 'zstd.zip' -DestinationPath 'zstd' -Force"
 
     # Configure & Build
     - name: Configure CMake
@@ -69,7 +53,7 @@ jobs:
     - name: Build
       run: cmake --build build --config Release
 
-    # Copy runtime DLLs
+    # Copy DLLs
     - name: Copy DLLs
       run: |
         Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\ -Force
