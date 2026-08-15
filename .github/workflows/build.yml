@@ -1,5 +1,4 @@
-name: Build NekoArchive (Fast OpenSSL via FireDaemon)
-
+name: Build NekoArchive
 on:
   workflow_dispatch:
 
@@ -59,6 +58,8 @@ jobs:
         cmake -B build -S . `
           -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake" `
           -DVCPKG_CMAKE_SYSTEM_IGNORE_EXTERNAL_OPENSSL=ON `
+          -DVCPKG_MANIFEST_MODE=OFF `
+          -DVCPKG_TARGET_TRIPLET="" `
           -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" `
           -DOPENSSL_INCLUDE_DIR="C:/Program Files/FireDaemon OpenSSL/include" `
           -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libcrypto.lib" `
