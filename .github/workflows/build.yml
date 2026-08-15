@@ -56,10 +56,10 @@ jobs:
     # -----------------------------
     - name: Configure CMake
       run: |
-        cmake -B build -S . ^
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake ^
-          -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" ^
-          -DQt6_DIR=${{ env.QT_DIR }}\lib\cmake\Qt6
+        cmake -B build -S . `
+          -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake" `
+          -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" `
+          -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
 
     - name: Build
       run: cmake --build build --config Release
