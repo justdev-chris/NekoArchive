@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find required packages
 find_package(zstd CONFIG REQUIRED)
 find_package(liblzma REQUIRED)
-find_package(xxHash REQUIRED)
+find_package(xxHash CONFIG REQUIRED)
 
 # Core library
 add_library(nekoarchive STATIC
@@ -21,7 +21,7 @@ target_include_directories(nekoarchive PUBLIC include)
 
 target_link_libraries(nekoarchive PRIVATE 
     zstd::libzstd
-    liblzma::liblzma
+    LibLZMA::LibLZMA
     xxHash::xxhash
 )
 
