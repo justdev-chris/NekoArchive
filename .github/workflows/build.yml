@@ -22,9 +22,9 @@ jobs:
     - name: Install aqtinstall
       run: pip install aqtinstall
 
-    - name: Install Qt 6.6.3 MSVC64
+    - name: Install Qt 6.6.3 MSVC64 with Tools
       run: |
-        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
+        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt --archives qtbase qttools
 
     - name: Set Qt env
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
@@ -36,17 +36,24 @@ jobs:
       run: |
         winget install FireDaemon.OpenSSL --silent --accept-source-agreements --accept-package-agreements
 
-    - name: Find OpenSSL (debug)
+    - name: Debug OpenSSL location
       run: |
-        echo "Searching for OpenSSL..."
+        Write-Host "Checking if FireDaemon OpenSSL installed..."
         if (Test-Path "C:\Program Files\FireDaemon OpenSSL") {
-          echo "FOUND: C:\Program Files\FireDaemon OpenSSL"
-          dir "C:\Program Files\FireDaemon OpenSSL"
+          Write-Host "Found: C:\Program Files\FireDaemon OpenSSL"
+          Get-ChildItem "C:\Program Files\FireDaemon OpenSSL" -Recurse
+        } else {
+          Write-Host "NOT found: C:\Program Files\FireDaemon OpenSSL"
         }
         if (Test-Path "C:\Program Files (x86)\FireDaemon OpenSSL") {
-          echo "FOUND: C:\Program Files (x86)\FireDaemon OpenSSL"
-          dir "C:\Program Files (x86)\FireDaemon OpenSSL"
+          Write-Host "Found: C:\Program Files (x86)\FireDaemon OpenSSL"
+          Get-ChildItem "C:\Program Files (x86)\FireDaemon OpenSSL" -Recurse
+        } else {
+          Write-Host "NOT found: C:\Program Files (x86)\FireDaemon OpenSSL"
         }
+        # Search entire C: drive for libcrypto.lib
+        Write-Host "Searching for libcrypto.lib..."
+        Get-ChildItem -Path "C:\" -Recurse -Filter "libcrypto.lib" -ErrorAction SilentlyContinue | Select-Object -First 5
 
     # -----------------------------
     # Install vcpkg (workspace path)
