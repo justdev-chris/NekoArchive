@@ -14,15 +14,15 @@ jobs:
       run: |
         git clone https://github.com/microsoft/vcpkg.git
         cd vcpkg
-        ./bootstrap-vcpkg.bat -disableMetrics -useVcpkgArtifacts
+        .\bootstrap-vcpkg.bat -disableMetrics -useVcpkgArtifacts
         echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_ENV
         echo "$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_PATH
 
     - name: Install vcpkg artifacts
       run: |
         cd vcpkg
-        ./vcpkg x-update-baseline
-        ./vcpkg x-install
+        .\vcpkg.exe x-update-baseline
+        .\vcpkg.exe x-install
 
     - name: Configure CMake
       run: |
