@@ -1,6 +1,9 @@
 {
-  "version": "2021-01-01",
+  "name": "nekoarchive",
+  "version": "0.1.0",
   "dependencies": [
-    "zstd"
+    "zstd",
+    "liblzma",
+    "xxhash"
   ]
 }
