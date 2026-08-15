@@ -15,8 +15,8 @@ jobs:
 
     - name: Download Tiny-AES-C
       run: |
-        mkdir -p include/nekoarchive/crypto
-        curl.exe -L -o include/nekoarchive/crypto/aes.h https://raw.githubusercontent.com/kokke/tiny-AES-c/master/aes.h
+        mkdir -p include/nekoarchive
+        curl.exe -L -o include/nekoarchive/aes.h https://raw.githubusercontent.com/kokke/tiny-AES-c/master/aes.h
         mkdir -p src/crypto
         curl.exe -L -o src/crypto/aes.c https://raw.githubusercontent.com/kokke/tiny-AES-c/master/aes.c
 
