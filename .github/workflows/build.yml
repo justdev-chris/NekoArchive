@@ -29,17 +29,19 @@ jobs:
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
 
     # -----------------------------
-    # Install OpenSSL (FireDaemon)
+    # Install OpenSSL (Chocolatey)
     # -----------------------------
-    - name: Install OpenSSL (FireDaemon)
+    - name: Install OpenSSL via Chocolatey
       run: |
-        winget install FireDaemon.OpenSSL --silent --accept-source-agreements --accept-package-agreements
+        choco install openssl --version=3.1.5 -y
 
     # Verify OpenSSL installation
-    - name: Verify OpenSSL paths
+    - name: Verify OpenSSL installation
       run: |
-        Write-Host "Checking FireDaemon OpenSSL installation..."
-        Get-ChildItem "C:/Program Files/FireDaemon OpenSSL/" -Recurse -Include "*.lib" | Select-Object FullName
+        Write-Host "OpenSSL version:"
+        openssl version
+        Write-Host "Searching for OpenSSL libs..."
+        Get-ChildItem "C:\Program Files\OpenSSL-Win64\lib" -Include "*.lib" | Select-Object Name
 
     # -----------------------------
     # Install vcpkg
@@ -66,10 +68,10 @@ jobs:
           -DVCPKG_CMAKE_SYSTEM_IGNORE_EXTERNAL_OPENSSL=ON `
           -DVCPKG_MANIFEST_MODE=OFF `
           -DVCPKG_TARGET_TRIPLET="x64-windows" `
-          -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" `
-          -DOPENSSL_INCLUDE_DIR="C:/Program Files/FireDaemon OpenSSL/include" `
-          -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/static/Release/libcrypto.lib" `
-          -DOPENSSL_SSL_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/static/Release/libssl.lib" `
+          -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL-Win64" `
+          -DOPENSSL_INCLUDE_DIR="C:/Program Files/OpenSSL-Win64/include" `
+          -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/OpenSSL-Win64/lib/libcrypto.lib" `
+          -DOPENSSL_SSL_LIBRARY="C:/Program Files/OpenSSL-Win64/lib/libssl.lib" `
           -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
     
     - name: Build
@@ -83,8 +85,8 @@ jobs:
         Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\
         New-Item -ItemType Directory -Force -Path build\Release\platforms
         Copy-Item "$env:QT_DIR\plugins\platforms\*" build\Release\platforms -Recurse
-        Copy-Item "C:/Program Files/FireDaemon OpenSSL/bin/libcrypto-3-x64.dll" build\Release\
-        Copy-Item "C:/Program Files/FireDaemon OpenSSL/bin/libssl-3-x64.dll" build\Release\
+        Copy-Item "C:/Program Files/OpenSSL-Win64/bin/libcrypto-3-x64.dll" build\Release\
+        Copy-Item "C:/Program Files/OpenSSL-Win64/bin/libssl-3-x64.dll" build\Release\
 
     # -----------------------------
     # Artifact
