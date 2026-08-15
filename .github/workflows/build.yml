@@ -27,23 +27,21 @@ jobs:
         aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
     - name: Set Qt env
-      run: |
-        echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
-        echo "OPENSSL_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
+      run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
 
     # -----------------------------
-    # Install vcpkg (only small libs)
+    # Install vcpkg (workspace path)
     # -----------------------------
     - name: Clone vcpkg
-      run: git clone https://github.com/microsoft/vcpkg C:\vcpkg
+      run: git clone https://github.com/microsoft/vcpkg $env:GITHUB_WORKSPACE/vcpkg
 
     - name: Bootstrap vcpkg
-      run: C:\vcpkg\bootstrap-vcpkg.bat
+      run: $env:GITHUB_WORKSPACE/vcpkg/bootstrap-vcpkg.bat
 
-    - name: Install small libs via vcpkg
+    - name: Install dependencies via vcpkg
       run: |
-        C:\vcpkg\vcpkg install zstd:x64-windows liblzma:x64-windows xxhash:x64-windows
-        echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+        $env:GITHUB_WORKSPACE/vcpkg/vcpkg install openssl:x64-windows zstd:x64-windows liblzma:x64-windows xxhash:x64-windows
+        echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_ENV
 
     # -----------------------------
     # Configure & Build
@@ -51,8 +49,7 @@ jobs:
     - name: Configure CMake
       run: |
         cmake -B build -S . ^
-          -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake ^
-          -DOPENSSL_ROOT_DIR=${{ env.OPENSSL_DIR }} ^
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake ^
           -DQt6_DIR=${{ env.QT_DIR }}/lib/cmake/Qt6
 
     - name: Build
