@@ -10,7 +10,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # Install Python for Qt
+    # Install Qt
     - name: Install Python
       uses: actions/setup-python@v5
       with:
@@ -20,81 +20,63 @@ jobs:
       run: pip install aqtinstall
 
     - name: Install Qt 6.6.3 MSVC64
-      run: |
-        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
+      run: aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
     - name: Set Qt env
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
 
-    # Download prebuilt OpenSSL
-    - name: Download OpenSSL prebuilt
+    # Download ALL libraries as ZIP files only (no installers)
+    - name: Download OpenSSL (ZIP)
       run: |
-        $url = "https://github.com/slproweb/opensslhashes/releases/download/1.1.1w/Win64OpenSSL-1_1_1w.exe"
-        $installer = "$env:TEMP\openssl.exe"
-        Write-Host "Downloading..."
-        curl.exe -L -o $installer $url
-        Write-Host "Installing..."
-        & $installer /silent /sp- /supressmsgboxes /S /D=C:\OpenSSL-Win64
-        Start-Sleep -Seconds 10
+        mkdir C:\deps
+        $url = "https://github.com/slproweb/opensslhashes/releases/download/1.1.1w/Win64OpenSSL_Light-1_1_1w.zip"
+        curl.exe -L -o C:\deps\openssl.zip $url
+        Expand-Archive -Path C:\deps\openssl.zip -DestinationPath C:\deps\openssl -Force
+        dir C:\deps\openssl
 
-    # Download prebuilt zstd
-    - name: Download zstd prebuilt
+    - name: Download zstd (ZIP)
       run: |
         $url = "https://github.com/facebook/zstd/releases/download/v1.5.5/zstd-v1.5.5-win64.zip"
-        $zip = "$env:TEMP\zstd.zip"
-        Write-Host "Downloading zstd..."
-        curl.exe -L -o $zip $url
-        Write-Host "Extracting..."
-        Expand-Archive -Path $zip -DestinationPath C:\zstd-prebuilt -Force
-        New-Item -ItemType Directory -Force -Path C:\zstd-prebuilt\lib
-        Copy-Item "C:\zstd-prebuilt\zstd-v1.5.5-win64\lib\*" "C:\zstd-prebuilt\lib\" -Force
+        curl.exe -L -o C:\deps\zstd.zip $url
+        Expand-Archive -Path C:\deps\zstd.zip -DestinationPath C:\deps\zstd -Force
+        dir C:\deps\zstd
 
-    # Download prebuilt liblzma
-    - name: Download liblzma prebuilt
+    - name: Download liblzma (ZIP)
       run: |
         $url = "https://github.com/tukaani-project/xz/releases/download/v5.4.4/xz-5.4.4-windows.zip"
-        $zip = "$env:TEMP\liblzma.zip"
-        Write-Host "Downloading liblzma..."
-        curl.exe -L -o $zip $url
-        Write-Host "Extracting..."
-        Expand-Archive -Path $zip -DestinationPath C:\liblzma-prebuilt -Force
+        curl.exe -L -o C:\deps\liblzma.zip $url
+        Expand-Archive -Path C:\deps\liblzma.zip -DestinationPath C:\deps\liblzma -Force
+        dir C:\deps\liblzma
 
-    # Download prebuilt xxHash
-    - name: Download xxHash prebuilt
+    - name: Download xxHash (ZIP)
       run: |
         $url = "https://github.com/Cyan4973/xxHash/releases/download/v0.8.1/xxHash-0.8.1-win64.zip"
-        $zip = "$env:TEMP\xxhash.zip"
-        Write-Host "Downloading xxHash..."
-        curl.exe -L -o $zip $url
-        Write-Host "Extracting..."
-        Expand-Archive -Path $zip -DestinationPath C:\xxhash-prebuilt -Force
+        curl.exe -L -o C:\deps\xxhash.zip $url
+        Expand-Archive -Path C:\deps\xxhash.zip -DestinationPath C:\deps\xxhash -Force
+        dir C:\deps\xxhash
 
     # Configure & Build
     - name: Configure CMake
       run: |
         cmake -B build -S . `
           -DCMAKE_BUILD_TYPE=Release `
-          -DOPENSSL_ROOT_DIR="C:/OpenSSL-Win64" `
-          -DOPENSSL_INCLUDE_DIR="C:/OpenSSL-Win64/include" `
-          -DOPENSSL_CRYPTO_LIBRARY="C:/OpenSSL-Win64/lib/VC/x64/MD/libcrypto.lib" `
-          -DOPENSSL_SSL_LIBRARY="C:/OpenSSL-Win64/lib/VC/x64/MD/libssl.lib" `
-          -Dzstd_DIR="C:/zstd-prebuilt" `
-          -Dliblzma_DIR="C:/liblzma-prebuilt" `
-          -DxxHash_DIR="C:/xxhash-prebuilt" `
+          -DOPENSSL_ROOT_DIR="C:/deps/openssl" `
+          -DOPENSSL_INCLUDE_DIR="C:/deps/openssl/include" `
+          -DOPENSSL_CRYPTO_LIBRARY="C:/deps/openssl/lib/libcrypto.lib" `
+          -DOPENSSL_SSL_LIBRARY="C:/deps/openssl/lib/libssl.lib" `
           -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
     
     - name: Build
       run: cmake --build build --config Release
 
-    # Copy DLLs
-    - name: Copy dependencies
+    # Copy runtime DLLs
+    - name: Copy DLLs
       run: |
-        Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\ -Force -ErrorAction SilentlyContinue
-        Copy-Item "C:\OpenSSL-Win64\bin\*.dll" build\Release\ -Force -ErrorAction SilentlyContinue
+        Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\ -Force
+        Copy-Item "C:\deps\openssl\bin\*.dll" build\Release\ -Force
         New-Item -ItemType Directory -Force -Path build\Release\platforms
-        Copy-Item "$env:QT_DIR\plugins\platforms\*" build\Release\platforms -Recurse -Force -ErrorAction SilentlyContinue
+        Copy-Item "$env:QT_DIR\plugins\platforms\*" build\Release\platforms -Recurse -Force
 
-    # Upload artifact
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
