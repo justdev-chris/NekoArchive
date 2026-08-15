@@ -1,4 +1,4 @@
-name: Build NekoArchive (Option A, With OpenSSL)
+name: Build NekoArchive
 
 on:
   workflow_dispatch:
@@ -30,6 +30,13 @@ jobs:
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
 
     # -----------------------------
+    # Install OpenSSL (FireDaemon)
+    # -----------------------------
+    - name: Install OpenSSL (FireDaemon)
+      run: |
+        winget install FireDaemon.OpenSSL --silent --accept-source-agreements --accept-package-agreements
+
+    # -----------------------------
     # Install vcpkg (workspace path)
     # -----------------------------
     - name: Clone vcpkg
@@ -39,9 +46,9 @@ jobs:
       run: |
         & "$env:GITHUB_WORKSPACE\vcpkg\bootstrap-vcpkg.bat"
 
-    - name: Install dependencies via vcpkg
+    - name: Install small libs via vcpkg
       run: |
-        & "$env:GITHUB_WORKSPACE\vcpkg\vcpkg.exe" install openssl:x64-windows zstd:x64-windows liblzma:x64-windows xxhash:x64-windows
+        & "$env:GITHUB_WORKSPACE\vcpkg\vcpkg.exe" install zstd:x64-windows liblzma:x64-windows xxhash:x64-windows
         echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE\vcpkg" >> $env:GITHUB_ENV
 
     # -----------------------------
@@ -51,6 +58,7 @@ jobs:
       run: |
         cmake -B build -S . ^
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake ^
+          -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" ^
           -DQt6_DIR=${{ env.QT_DIR }}\lib\cmake\Qt6
 
     - name: Build
