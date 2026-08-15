@@ -1,4 +1,4 @@
-name: Build NekoArchive
+name: Build NekoArchive (Option A, With OpenSSL)
 
 on:
   workflow_dispatch:
@@ -33,15 +33,16 @@ jobs:
     # Install vcpkg (workspace path)
     # -----------------------------
     - name: Clone vcpkg
-      run: git clone https://github.com/microsoft/vcpkg $env:GITHUB_WORKSPACE/vcpkg
+      run: git clone https://github.com/microsoft/vcpkg $env:GITHUB_WORKSPACE\vcpkg
 
     - name: Bootstrap vcpkg
-      run: $env:GITHUB_WORKSPACE/vcpkg/bootstrap-vcpkg.bat
+      run: |
+        & "$env:GITHUB_WORKSPACE\vcpkg\bootstrap-vcpkg.bat"
 
     - name: Install dependencies via vcpkg
       run: |
-        $env:GITHUB_WORKSPACE/vcpkg/vcpkg install openssl:x64-windows zstd:x64-windows liblzma:x64-windows xxhash:x64-windows
-        echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_ENV
+        & "$env:GITHUB_WORKSPACE\vcpkg\vcpkg.exe" install openssl:x64-windows zstd:x64-windows liblzma:x64-windows xxhash:x64-windows
+        echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE\vcpkg" >> $env:GITHUB_ENV
 
     # -----------------------------
     # Configure & Build
@@ -49,8 +50,8 @@ jobs:
     - name: Configure CMake
       run: |
         cmake -B build -S . ^
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake ^
-          -DQt6_DIR=${{ env.QT_DIR }}/lib/cmake/Qt6
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake ^
+          -DQt6_DIR=${{ env.QT_DIR }}\lib\cmake\Qt6
 
     - name: Build
       run: cmake --build build --config Release
