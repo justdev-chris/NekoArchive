@@ -9,14 +9,21 @@
 void print_usage() {
     std::cout << "NekoArchive v0.1 - Purr-fect compression\n\n";
     std::cout << "Usage:\n";
-    std::cout << "  nekocli -c <input> -o <output>    Compress\n";
-    std::cout << "  nekocli -x <archive> -o <dir>     Extract\n";
-    std::cout << "  nekocli -l <archive>              List contents\n";
-    std::cout << "  nekocli -h                        Show help\n";
-    std::cout << "\nModes:\n";
-    std::cout << "  -m hare    Fast compression\n";
-    std::cout << "  -m cat     Balanced (default)\n";
-    std::cout << "  -m tiger   Maximum compression\n";
+    std::cout << "  nekocli -c <input> -o <output> [-m mode]    Compress\n";
+    std::cout << "  nekocli -x <archive> -o <dir>              Extract\n";
+    std::cout << "  nekocli -l <archive>                       List contents\n";
+    std::cout << "  nekocli -h                                 Show help\n";
+    std::cout << "\nCompression Modes:\n";
+    std::cout << "  -m hare    Fast compression (LZ77 + Huffman)\n";
+    std::cout << "  -m cat     Balanced (default, Zstd)\n";
+    std::cout << "  -m tiger   Maximum compression (LZMA)\n";
+}
+
+NekoArchive::CompressionMode parse_mode(const std::string& mode_str) {
+    if (mode_str == "hare") return NekoArchive::CompressionMode::HARE;
+    if (mode_str == "cat") return NekoArchive::CompressionMode::CAT;
+    if (mode_str == "tiger") return NekoArchive::CompressionMode::TIGER;
+    return NekoArchive::CompressionMode::CAT; // default
 }
 
 int main(int argc, char* argv[]) {
@@ -26,16 +33,25 @@ int main(int argc, char* argv[]) {
     }
 
     std::string command = argv[1];
+    NekoArchive::CompressionMode mode = NekoArchive::CompressionMode::CAT;
     
     try {
         if (command == "-c" || command == "--compress") {
             if (argc < 5) {
-                std::cerr << "Error: -c <input> -o <output>\n";
+                std::cerr << "Error: -c <input> -o <output> [-m mode]\n";
                 return 1;
             }
             
             std::string input = argv[2];
             std::string output = argv[4];
+            
+            // Parse optional -m flag
+            for (int i = 5; i < argc - 1; ++i) {
+                if (std::string(argv[i]) == "-m") {
+                    mode = parse_mode(argv[i + 1]);
+                    break;
+                }
+            }
             
             std::vector<std::string> files;
             if (std::filesystem::is_directory(input)) {
@@ -49,7 +65,9 @@ int main(int argc, char* argv[]) {
             }
             
             NekoArchive::Archive archive;
-            std::cout << "🐱 Compressing " << files.size() << " files...\n";
+            std::string mode_name = (mode == NekoArchive::CompressionMode::HARE) ? "🐇 HARE" :
+                                    (mode == NekoArchive::CompressionMode::TIGER) ? "🐅 TIGER" : "🐈 CAT";
+            std::cout << "🐱 Compressing " << files.size() << " files (" << mode_name << " mode)...\n";
             
             if (archive.create(output, files)) {
                 std::cout << "✅ Compressed to " << output << "\n";
