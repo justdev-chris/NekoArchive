@@ -22,9 +22,9 @@ jobs:
     - name: Install aqtinstall
       run: pip install aqtinstall
 
-    - name: Install Qt 6.6.3 MSVC64 with Tools
+    - name: Install Qt 6.6.3 MSVC64
       run: |
-        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt --archives qtbase qttools
+        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
     - name: Set Qt env
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
@@ -35,6 +35,18 @@ jobs:
     - name: Install OpenSSL (FireDaemon)
       run: |
         winget install FireDaemon.OpenSSL --silent --accept-source-agreements --accept-package-agreements
+
+    - name: Find OpenSSL (debug)
+      run: |
+        echo "Searching for OpenSSL..."
+        if (Test-Path "C:\Program Files\FireDaemon OpenSSL") {
+          echo "FOUND: C:\Program Files\FireDaemon OpenSSL"
+          dir "C:\Program Files\FireDaemon OpenSSL"
+        }
+        if (Test-Path "C:\Program Files (x86)\FireDaemon OpenSSL") {
+          echo "FOUND: C:\Program Files (x86)\FireDaemon OpenSSL"
+          dir "C:\Program Files (x86)\FireDaemon OpenSSL"
+        }
 
     # -----------------------------
     # Install vcpkg (workspace path)
@@ -59,6 +71,8 @@ jobs:
         cmake -B build -S . `
           -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake" `
           -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" `
+          -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/libcrypto.lib" `
+          -DOPENSSL_INCLUDE_DIR="C:/Program Files/FireDaemon OpenSSL/include" `
           -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
 
     - name: Build
