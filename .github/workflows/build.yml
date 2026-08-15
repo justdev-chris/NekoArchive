@@ -35,6 +35,12 @@ jobs:
       run: |
         winget install FireDaemon.OpenSSL --silent --accept-source-agreements --accept-package-agreements
 
+    # Verify OpenSSL installation
+    - name: Verify OpenSSL paths
+      run: |
+        Write-Host "Checking FireDaemon OpenSSL installation..."
+        Get-ChildItem "C:/Program Files/FireDaemon OpenSSL/" -Recurse -Include "*.lib" | Select-Object FullName
+
     # -----------------------------
     # Install vcpkg
     # -----------------------------
@@ -62,8 +68,8 @@ jobs:
           -DVCPKG_TARGET_TRIPLET="x64-windows" `
           -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" `
           -DOPENSSL_INCLUDE_DIR="C:/Program Files/FireDaemon OpenSSL/include" `
-          -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libcrypto.lib" `
-          -DOPENSSL_SSL_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libssl.lib" `
+          -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/static/Release/libcrypto.lib" `
+          -DOPENSSL_SSL_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/static/Release/libssl.lib" `
           -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
     
     - name: Build
