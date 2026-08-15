@@ -10,9 +10,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # -----------------------------
-    # Install Qt
-    # -----------------------------
+    # Install Python for Qt
     - name: Install Python
       uses: actions/setup-python@v5
       with:
@@ -28,69 +26,75 @@ jobs:
     - name: Set Qt env
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
 
-    # -----------------------------
-    # Install OpenSSL (Chocolatey)
-    # -----------------------------
-    - name: Install OpenSSL via Chocolatey
+    # Download prebuilt OpenSSL
+    - name: Download OpenSSL prebuilt
       run: |
-        choco install openssl -y
+        $url = "https://github.com/slproweb/opensslhashes/releases/download/1.1.1w/Win64OpenSSL-1_1_1w.exe"
+        $installer = "$env:TEMP\openssl.exe"
+        Write-Host "Downloading..."
+        curl.exe -L -o $installer $url
+        Write-Host "Installing..."
+        & $installer /silent /sp- /supressmsgboxes /S /D=C:\OpenSSL-Win64
+        Start-Sleep -Seconds 10
 
-    # Verify OpenSSL installation
-    - name: Verify OpenSSL installation
+    # Download prebuilt zstd
+    - name: Download zstd prebuilt
       run: |
-        Write-Host "OpenSSL version:"
-        openssl version
-        Write-Host "Searching for OpenSSL libs..."
-        Get-ChildItem "C:\Program Files\OpenSSL-Win64\lib" -Include "*.lib" | Select-Object Name
+        $url = "https://github.com/facebook/zstd/releases/download/v1.5.5/zstd-v1.5.5-win64.zip"
+        $zip = "$env:TEMP\zstd.zip"
+        Write-Host "Downloading zstd..."
+        curl.exe -L -o $zip $url
+        Write-Host "Extracting..."
+        Expand-Archive -Path $zip -DestinationPath C:\zstd-prebuilt -Force
+        New-Item -ItemType Directory -Force -Path C:\zstd-prebuilt\lib
+        Copy-Item "C:\zstd-prebuilt\zstd-v1.5.5-win64\lib\*" "C:\zstd-prebuilt\lib\" -Force
 
-    # -----------------------------
-    # Install vcpkg
-    # -----------------------------
-    - name: Clone vcpkg
-      run: git clone https://github.com/microsoft/vcpkg $env:GITHUB_WORKSPACE\vcpkg
-
-    - name: Bootstrap vcpkg
+    # Download prebuilt liblzma
+    - name: Download liblzma prebuilt
       run: |
-        & "$env:GITHUB_WORKSPACE\vcpkg\bootstrap-vcpkg.bat"
+        $url = "https://github.com/tukaani-project/xz/releases/download/v5.4.4/xz-5.4.4-windows.zip"
+        $zip = "$env:TEMP\liblzma.zip"
+        Write-Host "Downloading liblzma..."
+        curl.exe -L -o $zip $url
+        Write-Host "Extracting..."
+        Expand-Archive -Path $zip -DestinationPath C:\liblzma-prebuilt -Force
 
-    - name: Install small libs via vcpkg
+    # Download prebuilt xxHash
+    - name: Download xxHash prebuilt
       run: |
-        & "$env:GITHUB_WORKSPACE\vcpkg\vcpkg.exe" install zstd:x64-windows liblzma:x64-windows xxhash:x64-windows
-        echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE\vcpkg" >> $env:GITHUB_ENV
+        $url = "https://github.com/Cyan4973/xxHash/releases/download/v0.8.1/xxHash-0.8.1-win64.zip"
+        $zip = "$env:TEMP\xxhash.zip"
+        Write-Host "Downloading xxHash..."
+        curl.exe -L -o $zip $url
+        Write-Host "Extracting..."
+        Expand-Archive -Path $zip -DestinationPath C:\xxhash-prebuilt -Force
 
-    # -----------------------------
     # Configure & Build
-    # -----------------------------
     - name: Configure CMake
       run: |
         cmake -B build -S . `
-          -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake" `
-          -DVCPKG_CMAKE_SYSTEM_IGNORE_EXTERNAL_OPENSSL=ON `
-          -DVCPKG_MANIFEST_MODE=OFF `
-          -DVCPKG_TARGET_TRIPLET="x64-windows" `
-          -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL-Win64" `
-          -DOPENSSL_INCLUDE_DIR="C:/Program Files/OpenSSL-Win64/include" `
-          -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/OpenSSL-Win64/lib/libcrypto.lib" `
-          -DOPENSSL_SSL_LIBRARY="C:/Program Files/OpenSSL-Win64/lib/libssl.lib" `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DOPENSSL_ROOT_DIR="C:/OpenSSL-Win64" `
+          -DOPENSSL_INCLUDE_DIR="C:/OpenSSL-Win64/include" `
+          -DOPENSSL_CRYPTO_LIBRARY="C:/OpenSSL-Win64/lib/VC/x64/MD/libcrypto.lib" `
+          -DOPENSSL_SSL_LIBRARY="C:/OpenSSL-Win64/lib/VC/x64/MD/libssl.lib" `
+          -Dzstd_DIR="C:/zstd-prebuilt" `
+          -Dliblzma_DIR="C:/liblzma-prebuilt" `
+          -DxxHash_DIR="C:/xxhash-prebuilt" `
           -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
     
     - name: Build
       run: cmake --build build --config Release
 
-    # -----------------------------
-    # Copy DLLs (Qt + OpenSSL)
-    # -----------------------------
-    - name: Copy Qt + OpenSSL DLLs
+    # Copy DLLs
+    - name: Copy dependencies
       run: |
-        Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\
+        Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\ -Force -ErrorAction SilentlyContinue
+        Copy-Item "C:\OpenSSL-Win64\bin\*.dll" build\Release\ -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force -Path build\Release\platforms
-        Copy-Item "$env:QT_DIR\plugins\platforms\*" build\Release\platforms -Recurse
-        Copy-Item "C:/Program Files/OpenSSL-Win64/bin/libcrypto-3-x64.dll" build\Release\
-        Copy-Item "C:/Program Files/OpenSSL-Win64/bin/libssl-3-x64.dll" build\Release\
+        Copy-Item "$env:QT_DIR\plugins\platforms\*" build\Release\platforms -Recurse -Force -ErrorAction SilentlyContinue
 
-    # -----------------------------
-    # Artifact
-    # -----------------------------
+    # Upload artifact
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
