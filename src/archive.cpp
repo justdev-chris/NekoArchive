@@ -5,7 +5,6 @@
 #include <filesystem>
 #include <zstd.h>
 #include <lzma.h>
-#include <openssl/evp.h>
 #include <xxhash.h>
 
 namespace fs = std::filesystem;
@@ -16,8 +15,8 @@ struct Archive::Impl {
     std::vector<FileEntry> entries;
     std::string password;
     CompressionMode mode;
-    std::vector<std::vector<uint8_t>> compressed_data; // Store compressed data for writing
-    std::vector<std::vector<uint8_t>> original_data;   // Store original data for CRC
+    std::vector<std::vector<uint8_t>> compressed_data;
+    std::vector<std::vector<uint8_t>> original_data;
     
     bool write_header(std::ofstream& file) {
         uint32_t magic = 0x4F4B454E;
@@ -133,7 +132,6 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
         compressor.set_password(impl->password);
     }
     
-    // Read and compress each file
     for (const auto& filepath : input_files) {
         std::ifstream input(filepath, std::ios::binary);
         if (!input) continue;
@@ -145,14 +143,13 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
         std::vector<uint8_t> data(size);
         input.read(reinterpret_cast<char*>(data.data()), size);
         
-        // Compress the data
         std::vector<uint8_t> compressed = compressor.compress(data);
         
         FileEntry entry;
         entry.name = fs::path(filepath).filename().string();
         entry.original_size = size;
         entry.compressed_size = compressed.size();
-        entry.offset = 0; // Will be set after all files are processed
+        entry.offset = 0;
         entry.crc32 = impl->calculate_crc32(data);
         
         impl->entries.push_back(entry);
@@ -160,31 +157,26 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
         impl->original_data.push_back(data);
     }
     
-    // Calculate offsets
     uint64_t offset = 0;
     for (size_t i = 0; i < impl->entries.size(); ++i) {
         impl->entries[i].offset = offset;
         offset += impl->compressed_data[i].size();
     }
     
-    // Write header
     if (!impl->write_header(file)) {
         return false;
     }
     
-    // Write index
     if (!impl->write_index(file)) {
         return false;
     }
     
-    // Write all compressed data
     for (size_t i = 0; i < impl->compressed_data.size(); ++i) {
         file.write(reinterpret_cast<const char*>(impl->compressed_data[i].data()), 
                    impl->compressed_data[i].size());
         if (!file.good()) return false;
     }
     
-    // Write footer checksum (CRC of entire archive)
     uint32_t footer_crc = 0;
     file.write(reinterpret_cast<const char*>(&footer_crc), 4);
     if (!file.good()) return false;
@@ -198,7 +190,6 @@ bool Archive::extract(const std::string& archive_path, const std::string& output
     
     if (!impl->read_header(file)) return false;
     
-    // Create output directory if it doesn't exist
     fs::create_directories(output_dir);
     
     Decompressor decompressor;
@@ -207,26 +198,20 @@ bool Archive::extract(const std::string& archive_path, const std::string& output
     }
     
     for (const auto& entry : impl->entries) {
-        // Seek to data offset
         file.seekg(entry.offset, std::ios::beg);
         if (!file.good()) return false;
         
-        // Read compressed data
         std::vector<uint8_t> compressed(entry.compressed_size);
         file.read(reinterpret_cast<char*>(compressed.data()), entry.compressed_size);
         if (!file.good()) return false;
         
-        // Decompress
         std::vector<uint8_t> decompressed = decompressor.decompress(compressed);
         
-        // Verify CRC32
         uint32_t crc = XXH32(decompressed.data(), decompressed.size(), 0);
         if (crc != entry.crc32) {
-            // CRC mismatch - file corrupt
             return false;
         }
         
-        // Write output file
         std::string output_path = output_dir + "/" + entry.name;
         std::ofstream output(output_path, std::ios::binary);
         if (!output) return false;
