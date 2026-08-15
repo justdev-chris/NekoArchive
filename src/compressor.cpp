@@ -1,9 +1,8 @@
 #include "nekoarchive/compressor.h"
+#include "nekoarchive/aes.h"
 #include <zstd.h>
 #include <lzma.h>
 #include <xxhash.h>
-#include <openssl/evp.h>
-#include <openssl/rand.h>
 #include <vector>
 #include <cstring>
 #include <thread>
@@ -22,6 +21,24 @@ struct Compressor::Impl {
     size_t dict_size;
     
     Impl() : mode(CompressionMode::CAT), threads(std::thread::hardware_concurrency()), dict_size(1 << 20) {}
+    
+    // Simple deterministic key derivation from password
+    void derive_key_and_iv(const std::string& password, uint8_t* key, uint8_t* iv) {
+        // Hash the password by XORing and rotating
+        memset(key, 0, 16);
+        memset(iv, 0, 16);
+        
+        for (size_t i = 0; i < password.size(); ++i) {
+            key[i % 16] ^= password[i];
+            iv[i % 16] ^= (password[i] >> 4);
+        }
+        
+        // Expand key material
+        for (int i = 0; i < 16; ++i) {
+            key[i] = ((key[i] * 31) + (i * 7)) & 0xFF;
+            iv[i] = ((iv[i] * 17) + (i * 13)) & 0xFF;
+        }
+    }
     
     std::vector<uint8_t> lz77_compress(const std::vector<uint8_t>& input) {
         if (input.empty()) return {};
@@ -153,14 +170,11 @@ struct Compressor::Impl {
         };
         generate_codes(root, "");
         
-        // Store frequency table first (for decoding)
         std::vector<uint8_t> output;
         output.reserve(input.size() + 1024);
         
-        // Store number of symbols with non-zero frequency
         output.push_back(static_cast<uint8_t>(num_symbols));
         
-        // Store each symbol and its frequency
         for (int i = 0; i < 256; ++i) {
             if (freq[i] > 0) {
                 output.push_back(static_cast<uint8_t>(i));
@@ -172,14 +186,12 @@ struct Compressor::Impl {
             }
         }
         
-        // Build bitstring
         std::string bitstring;
         bitstring.reserve(input.size() * 8);
         for (uint8_t c : input) {
             bitstring += codes[c];
         }
         
-        // Store padding bits count and bit length
         uint8_t padding = static_cast<uint8_t>((8 - (bitstring.size() % 8)) % 8);
         output.push_back(padding);
         
@@ -189,7 +201,6 @@ struct Compressor::Impl {
         output.push_back((bit_length >> 16) & 0xFF);
         output.push_back((bit_length >> 24) & 0xFF);
         
-        // Pack bits into bytes
         for (size_t i = 0; i < bitstring.size(); i += 8) {
             uint8_t byte = 0;
             for (size_t j = 0; j < 8 && i + j < bitstring.size(); ++j) {
@@ -208,12 +219,9 @@ struct Compressor::Impl {
         if (input.empty()) return {};
         
         size_t pos = 0;
-        
-        // Read number of symbols
         uint8_t num_symbols = input[pos++];
         if (num_symbols == 0) return {};
         
-        // Read frequency table
         int freq[256] = {0};
         for (int i = 0; i < num_symbols; ++i) {
             uint8_t symbol = input[pos++];
@@ -221,7 +229,6 @@ struct Compressor::Impl {
             freq[symbol] = f;
         }
         
-        // Rebuild Huffman tree
         std::priority_queue<HuffmanNode*, std::vector<HuffmanNode*>, HuffmanCompare> pq;
         for (int i = 0; i < 256; ++i) {
             if (freq[i] > 0) {
@@ -240,15 +247,12 @@ struct Compressor::Impl {
         
         HuffmanNode* root = pq.top();
         
-        // Read padding and bit length
         uint8_t padding = input[pos++];
         uint32_t bit_length = input[pos++] | (input[pos++] << 8) | (input[pos++] << 16) | (input[pos++] << 24);
         
-        // Reconstruct bitstring
         std::string bitstring;
         bitstring.reserve(bit_length);
         
-        size_t total_bits = (input.size() - pos) * 8 - padding;
         for (size_t i = pos; i < input.size() && bitstring.size() < bit_length; ++i) {
             uint8_t byte = input[i];
             for (int j = 7; j >= 0 && bitstring.size() < bit_length; --j) {
@@ -256,7 +260,6 @@ struct Compressor::Impl {
             }
         }
         
-        // Decode using the tree
         std::vector<uint8_t> output;
         output.reserve(bit_length);
         
@@ -381,62 +384,55 @@ struct Compressor::Impl {
     std::vector<uint8_t> encrypt(const std::vector<uint8_t>& data) {
         if (password.empty() || data.empty()) return data;
         
-        std::vector<uint8_t> salt(16);
-        RAND_bytes(salt.data(), salt.size());
+        uint8_t key[16];
+        uint8_t iv[16];
+        derive_key_and_iv(password, key, iv);
         
-        std::vector<uint8_t> key(32);
-        std::vector<uint8_t> iv(16);
-        PKCS5_PBKDF2_HMAC(password.c_str(), password.size(), 
-                         salt.data(), salt.size(), 100000,
-                         EVP_sha256(), 32, key.data());
+        // Pad to 16-byte blocks (PKCS7)
+        size_t padded_size = ((data.size() + 15) / 16) * 16;
+        std::vector<uint8_t> padded(padded_size);
+        memcpy(padded.data(), data.data(), data.size());
         
-        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-        EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(), iv.data());
+        uint8_t pad_value = padded_size - data.size();
+        for (size_t i = data.size(); i < padded_size; ++i) {
+            padded[i] = pad_value;
+        }
         
-        std::vector<uint8_t> output(data.size() + 16 + 16 + salt.size());
-        size_t offset = 0;
+        // Encrypt using AES-128-ECB
+        struct AES_ctx ctx;
+        AES_init_ctx(&ctx, key);
         
-        memcpy(output.data(), salt.data(), salt.size());
-        offset += salt.size();
+        for (size_t i = 0; i < padded_size; i += 16) {
+            AES_ECB_encrypt(&ctx, padded.data() + i);
+        }
         
-        int len;
-        EVP_EncryptUpdate(ctx, output.data() + offset, &len, data.data(), data.size());
-        offset += len;
-        
-        EVP_EncryptFinal_ex(ctx, output.data() + offset, &len);
-        offset += len;
-        
-        output.resize(offset);
-        EVP_CIPHER_CTX_free(ctx);
-        
-        return output;
+        return padded;
     }
     
     std::vector<uint8_t> decrypt(const std::vector<uint8_t>& data) {
         if (password.empty() || data.empty()) return data;
         
-        std::vector<uint8_t> salt(16);
-        memcpy(salt.data(), data.data(), 16);
+        uint8_t key[16];
+        uint8_t iv[16];
+        derive_key_and_iv(password, key, iv);
         
-        std::vector<uint8_t> key(32);
-        std::vector<uint8_t> iv(16);
-        PKCS5_PBKDF2_HMAC(password.c_str(), password.size(), 
-                         salt.data(), salt.size(), 100000,
-                         EVP_sha256(), 32, key.data());
+        // Decrypt using AES-128-ECB
+        struct AES_ctx ctx;
+        AES_init_ctx(&ctx, key);
         
-        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-        EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(), iv.data());
+        std::vector<uint8_t> output = data;
         
-        std::vector<uint8_t> output(data.size() - 16);
-        int len;
-        EVP_DecryptUpdate(ctx, output.data(), &len, data.data() + 16, data.size() - 16);
-        int outlen = len;
+        for (size_t i = 0; i < output.size(); i += 16) {
+            AES_ECB_decrypt(&ctx, output.data() + i);
+        }
         
-        EVP_DecryptFinal_ex(ctx, output.data() + len, &len);
-        outlen += len;
-        
-        output.resize(outlen);
-        EVP_CIPHER_CTX_free(ctx);
+        // Remove PKCS7 padding
+        if (!output.empty()) {
+            uint8_t pad_value = output.back();
+            if (pad_value > 0 && pad_value <= 16) {
+                output.resize(output.size() - pad_value);
+            }
+        }
         
         return output;
     }
