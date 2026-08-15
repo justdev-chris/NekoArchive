@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "dependencies": [
+    "qtbase",
+    "openssl",
+    "zstd",
+    "liblzma",
+    "xxhash"
+  ]
+}
