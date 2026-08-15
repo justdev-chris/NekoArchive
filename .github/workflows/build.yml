@@ -1,4 +1,4 @@
-name: Build NekoArchive 
+name: Build NekoArchive
 
 on:
   workflow_dispatch:
@@ -22,9 +22,9 @@ jobs:
     - name: Install aqtinstall
       run: pip install aqtinstall
 
-    - name: Install Qt 6.6.3 MSVC64 with Tools
+    - name: Install Qt 6.6.3 MSVC64
       run: |
-        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt --archives qtbase qttools
+        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
     - name: Set Qt env
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
@@ -59,6 +59,7 @@ jobs:
         cmake -B build -S . `
           -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake" `
           -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" `
+          -DOPENSSL_INCLUDE_DIR="C:/Program Files/FireDaemon OpenSSL/include" `
           -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libcrypto.lib" `
           -DOPENSSL_SSL_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libssl.lib" `
           -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
@@ -79,8 +80,8 @@ jobs:
         Copy-Item "$env:QT_DIR\plugins\platforms\*" build\Release\platforms -Recurse
 
         # FireDaemon OpenSSL DLLs
-        Copy-Item "C:\Program Files\FireDaemon OpenSSL\bin\libcrypto-3-x64.dll" build\Release\
-        Copy-Item "C:\Program Files\FireDaemon OpenSSL\bin\libssl-3-x64.dll" build\Release\
+        Copy-Item "C:/Program Files/FireDaemon OpenSSL/bin/libcrypto-3-x64.dll" build\Release\
+        Copy-Item "C:/Program Files/FireDaemon OpenSSL/bin/libssl-3-x64.dll" build\Release\
 
     # -----------------------------
     # Artifact
