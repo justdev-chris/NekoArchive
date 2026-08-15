@@ -1,0 +1,6 @@
+{
+  "version": "2021-01-01",
+  "dependencies": [
+    "zstd"
+  ]
+}
