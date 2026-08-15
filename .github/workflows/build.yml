@@ -10,7 +10,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # Install Qt
     - name: Install Python
       uses: actions/setup-python@v5
       with:
@@ -19,13 +18,13 @@ jobs:
     - name: Install aqtinstall
       run: pip install aqtinstall
 
-    - name: Install Qt
-      run: aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
+    - name: Install Qt 6.6.3 MSVC64 with all modules
+      run: |
+        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 -m all --outputdir C:\Qt
 
     - name: Set Qt env
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
 
-    # Download deps using cmd (more reliable than PowerShell)
     - name: Download dependencies
       shell: cmd
       run: |
@@ -39,7 +38,6 @@ jobs:
         powershell -Command "(New-Object System.Net.ServicePointManager).SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; Invoke-WebRequest -Uri 'https://github.com/facebook/zstd/releases/download/v1.5.5/zstd-v1.5.5-win64.zip' -OutFile 'zstd.zip' -ErrorAction Stop"
         powershell -Command "Expand-Archive -Path 'zstd.zip' -DestinationPath 'zstd' -Force"
 
-    # Configure & Build
     - name: Configure CMake
       run: |
         cmake -B build -S . `
@@ -53,7 +51,6 @@ jobs:
     - name: Build
       run: cmake --build build --config Release
 
-    # Copy DLLs
     - name: Copy DLLs
       run: |
         Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\ -Force
