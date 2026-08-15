@@ -1,4 +1,4 @@
-name: Build NekoArchive
+name: Build NekoArchive 
 
 on:
   workflow_dispatch:
@@ -36,25 +36,6 @@ jobs:
       run: |
         winget install FireDaemon.OpenSSL --silent --accept-source-agreements --accept-package-agreements
 
-    - name: Debug OpenSSL location
-      run: |
-        Write-Host "Checking if FireDaemon OpenSSL installed..."
-        if (Test-Path "C:\Program Files\FireDaemon OpenSSL") {
-          Write-Host "Found: C:\Program Files\FireDaemon OpenSSL"
-          Get-ChildItem "C:\Program Files\FireDaemon OpenSSL" -Recurse
-        } else {
-          Write-Host "NOT found: C:\Program Files\FireDaemon OpenSSL"
-        }
-        if (Test-Path "C:\Program Files (x86)\FireDaemon OpenSSL") {
-          Write-Host "Found: C:\Program Files (x86)\FireDaemon OpenSSL"
-          Get-ChildItem "C:\Program Files (x86)\FireDaemon OpenSSL" -Recurse
-        } else {
-          Write-Host "NOT found: C:\Program Files (x86)\FireDaemon OpenSSL"
-        }
-        # Search entire C: drive for libcrypto.lib
-        Write-Host "Searching for libcrypto.lib..."
-        Get-ChildItem -Path "C:\" -Recurse -Filter "libcrypto.lib" -ErrorAction SilentlyContinue | Select-Object -First 5
-
     # -----------------------------
     # Install vcpkg (workspace path)
     # -----------------------------
@@ -78,12 +59,28 @@ jobs:
         cmake -B build -S . `
           -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake" `
           -DOPENSSL_ROOT_DIR="C:/Program Files/FireDaemon OpenSSL" `
-          -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/libcrypto.lib" `
-          -DOPENSSL_INCLUDE_DIR="C:/Program Files/FireDaemon OpenSSL/include" `
+          -DOPENSSL_CRYPTO_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libcrypto.lib" `
+          -DOPENSSL_SSL_LIBRARY="C:/Program Files/FireDaemon OpenSSL/lib/VC/x64/MD/libssl.lib" `
           -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
 
     - name: Build
       run: cmake --build build --config Release
+
+    # -----------------------------
+    # Copy DLLs (Qt + OpenSSL)
+    # -----------------------------
+    - name: Copy Qt + OpenSSL DLLs
+      run: |
+        # Qt DLLs
+        Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\
+
+        # Qt platform plugins
+        New-Item -ItemType Directory -Force -Path build\Release\platforms
+        Copy-Item "$env:QT_DIR\plugins\platforms\*" build\Release\platforms -Recurse
+
+        # FireDaemon OpenSSL DLLs
+        Copy-Item "C:\Program Files\FireDaemon OpenSSL\bin\libcrypto-3-x64.dll" build\Release\
+        Copy-Item "C:\Program Files\FireDaemon OpenSSL\bin\libssl-3-x64.dll" build\Release\
 
     # -----------------------------
     # Artifact
