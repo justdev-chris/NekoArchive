@@ -16,7 +16,7 @@ add_library(nekoarchive STATIC
 )
 
 target_include_directories(nekoarchive PUBLIC include)
-target_link_libraries(nekoarchive PRIVATE zstd::zstd)
+target_link_libraries(nekoarchive PRIVATE zstd::libzstd)
 
 # CLI executable
 add_executable(nekocli src/main.cpp)
