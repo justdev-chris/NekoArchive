@@ -10,21 +10,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Install Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-
-    - name: Install aqtinstall
-      run: pip install aqtinstall
-
-    - name: Install Qt 6.6.3 MSVC64 with all modules
-      run: |
-        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 -m all --outputdir C:\Qt
-
-    - name: Set Qt env
-      run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
-
     - name: Download dependencies
       shell: cmd
       run: |
@@ -33,30 +18,22 @@ jobs:
         echo Downloading OpenSSL...
         powershell -Command "(New-Object System.Net.ServicePointManager).SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; Invoke-WebRequest -Uri 'https://github.com/slproweb/opensslhashes/releases/download/1.1.1w/Win64OpenSSL_Light-1_1_1w.zip' -OutFile 'openssl.zip' -ErrorAction Stop"
         powershell -Command "Expand-Archive -Path 'openssl.zip' -DestinationPath 'openssl' -Force"
-        
-        echo Downloading zstd...
-        powershell -Command "(New-Object System.Net.ServicePointManager).SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; Invoke-WebRequest -Uri 'https://github.com/facebook/zstd/releases/download/v1.5.5/zstd-v1.5.5-win64.zip' -OutFile 'zstd.zip' -ErrorAction Stop"
-        powershell -Command "Expand-Archive -Path 'zstd.zip' -DestinationPath 'zstd' -Force"
 
-    - name: Configure CMake
+    - name: Configure CMake (CLI only, no Qt)
       run: |
         cmake -B build -S . `
           -DCMAKE_BUILD_TYPE=Release `
           -DOPENSSL_ROOT_DIR="C:/deps/openssl" `
           -DOPENSSL_INCLUDE_DIR="C:/deps/openssl/include" `
           -DOPENSSL_CRYPTO_LIBRARY="C:/deps/openssl/lib/libcrypto.lib" `
-          -DOPENSSL_SSL_LIBRARY="C:/deps/openssl/lib/libssl.lib" `
-          -DQt6_DIR="${{ env.QT_DIR }}\lib\cmake\Qt6"
+          -DOPENSSL_SSL_LIBRARY="C:/deps/openssl/lib/libssl.lib"
     
     - name: Build
       run: cmake --build build --config Release
 
     - name: Copy DLLs
       run: |
-        Copy-Item "$env:QT_DIR\bin\*.dll" build\Release\ -Force
         Copy-Item "C:\deps\openssl\bin\*.dll" build\Release\ -Force
-        New-Item -ItemType Directory -Force -Path build\Release\platforms
-        Copy-Item "$env:QT_DIR\plugins\platforms\*" build\Release\platforms -Recurse -Force
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
