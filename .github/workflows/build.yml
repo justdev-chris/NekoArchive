@@ -22,9 +22,9 @@ jobs:
     - name: Install aqtinstall
       run: pip install aqtinstall
 
-    - name: Install Qt 6.6.3 MSVC64
+    - name: Install Qt 6.6.3 MSVC64 with Tools
       run: |
-        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
+        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt --archives qtbase qttools
 
     - name: Set Qt env
       run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
