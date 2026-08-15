@@ -4,53 +4,72 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
-    
+
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
-    - name: Setup vcpkg (artifacts mode)
+    # -----------------------------
+    # Install Qt (prebuilt, fast)
+    # -----------------------------
+    - name: Install Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install aqtinstall
+      run: pip install aqtinstall
+
+    - name: Install Qt 6.6.3 MSVC64
       run: |
-        git clone https://github.com/microsoft/vcpkg.git
-        cd vcpkg
-        .\bootstrap-vcpkg.bat -disableMetrics -useVcpkgArtifacts
-        echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_ENV
-        echo "$env:GITHUB_WORKSPACE/vcpkg" >> $env:GITHUB_PATH
+        aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
-    - name: Install vcpkg artifacts
+    - name: Set Qt env
+      run: echo "QT_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
+
+    # -----------------------------
+    # Install OpenSSL (prebuilt)
+    # -----------------------------
+    - name: Download OpenSSL Win64
       run: |
-        cd vcpkg
-        .\vcpkg.exe x-update-baseline
-        .\vcpkg.exe x-install
+        curl -L -o openssl.zip https://download.firedaemon.com/FireDaemon-OpenSSL/openssl-1.1.1w-win64.zip
+        tar -xf openssl.zip -C $env:USERPROFILE
+        echo "OPENSSL_DIR=$env:USERPROFILE\openssl-1.1.1w-win64" >> $env:GITHUB_ENV
 
+    # -----------------------------
+    # Install vcpkg (only small libs)
+    # -----------------------------
+    - name: Clone vcpkg
+      run: git clone https://github.com/microsoft/vcpkg C:\vcpkg
+
+    - name: Bootstrap vcpkg
+      run: C:\vcpkg\bootstrap-vcpkg.bat
+
+    - name: Install small libs via vcpkg
+      run: |
+        C:\vcpkg\vcpkg install zstd:x64-windows liblzma:x64-windows xxhash:x64-windows
+        echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+
+    # -----------------------------
+    # Configure & Build
+    # -----------------------------
     - name: Configure CMake
       run: |
-        mkdir build
-        cd build
-        cmake .. -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+        cmake -B build -S . ^
+          -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake ^
+          -DOPENSSL_ROOT_DIR=${{ env.OPENSSL_DIR }} ^
+          -DQt6_DIR=${{ env.QT_DIR }}/lib/cmake/Qt6
 
     - name: Build
-      run: |
-        cd build
-        cmake --build . --config Release
+      run: cmake --build build --config Release
 
-    - name: Collect DLLs
-      shell: pwsh
-      run: |
-        mkdir deploy
-        cd build/Release
-
-        Copy-Item nekocli.exe ../../deploy/
-        Copy-Item nekogui.exe ../../deploy/
-
-        $dlls = Get-ChildItem -Recurse "$env:VCPKG_ROOT/artifacts" -Filter *.dll
-        foreach ($dll in $dlls) {
-            Copy-Item $dll.FullName ../../deploy/ -ErrorAction SilentlyContinue
-        }
-
-    - name: Upload artifacts
+    # -----------------------------
+    # Artifact
+    # -----------------------------
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: NekoArchive-Windows
-        path: deploy/*
+        name: NekoArchive
+        path: build/Release
