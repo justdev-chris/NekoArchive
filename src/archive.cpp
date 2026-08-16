@@ -6,6 +6,7 @@
 #include <zstd.h>
 #include <lzma.h>
 #include <xxhash.h>
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -119,7 +120,10 @@ Archive::~Archive() = default;
 
 bool Archive::create(const std::string& output_path, const std::vector<std::string>& input_files) {
     std::ofstream file(output_path, std::ios::binary);
-    if (!file) return false;
+    if (!file) {
+        std::cerr << "Archive::create: Failed to open output file: " << output_path << std::endl;
+        return false;
+    }
     
     impl->entries.clear();
     impl->compressed_data.clear();
@@ -133,17 +137,25 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
     }
     
     for (const auto& filepath : input_files) {
+        std::cout << "  Reading file: " << filepath << std::endl;
         std::ifstream input(filepath, std::ios::binary);
-        if (!input) continue;
+        if (!input) {
+            std::cerr << "  Failed to open: " << filepath << std::endl;
+            continue;
+        }
         
         input.seekg(0, std::ios::end);
         size_t size = input.tellg();
         input.seekg(0, std::ios::beg);
         
+        std::cout << "  File size: " << size << " bytes" << std::endl;
+        
         std::vector<uint8_t> data(size);
         input.read(reinterpret_cast<char*>(data.data()), size);
         
+        std::cout << "  Compressing..." << std::endl;
         std::vector<uint8_t> compressed = compressor.compress(data);
+        std::cout << "  Compressed size: " << compressed.size() << " bytes" << std::endl;
         
         FileEntry entry;
         entry.name = fs::path(filepath).filename().string();
@@ -157,38 +169,60 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
         impl->original_data.push_back(data);
     }
     
+    std::cout << "Total entries: " << impl->entries.size() << std::endl;
+    
     uint64_t offset = 0;
     for (size_t i = 0; i < impl->entries.size(); ++i) {
         impl->entries[i].offset = offset;
         offset += impl->compressed_data[i].size();
+        std::cout << "  Entry " << i << ": offset=" << offset << std::endl;
     }
     
     if (!impl->write_header(file)) {
+        std::cerr << "Archive::create: Failed to write header" << std::endl;
         return false;
     }
     
     if (!impl->write_index(file)) {
+        std::cerr << "Archive::create: Failed to write index" << std::endl;
         return false;
     }
     
     for (size_t i = 0; i < impl->compressed_data.size(); ++i) {
+        std::cout << "  Writing compressed data " << i << " (" << impl->compressed_data[i].size() << " bytes)" << std::endl;
         file.write(reinterpret_cast<const char*>(impl->compressed_data[i].data()), 
                    impl->compressed_data[i].size());
-        if (!file.good()) return false;
+        if (!file.good()) {
+            std::cerr << "Archive::create: Failed to write data" << std::endl;
+            return false;
+        }
     }
     
     uint32_t footer_crc = 0;
     file.write(reinterpret_cast<const char*>(&footer_crc), 4);
-    if (!file.good()) return false;
+    if (!file.good()) {
+        std::cerr << "Archive::create: Failed to write footer" << std::endl;
+        return false;
+    }
     
+    std::cout << "Archive::create: SUCCESS" << std::endl;
     return true;
 }
 
 bool Archive::extract(const std::string& archive_path, const std::string& output_dir) {
+    std::cout << "Archive::extract: Opening " << archive_path << std::endl;
     std::ifstream file(archive_path, std::ios::binary);
-    if (!file) return false;
+    if (!file) {
+        std::cerr << "Archive::extract: Failed to open archive" << std::endl;
+        return false;
+    }
     
-    if (!impl->read_header(file)) return false;
+    if (!impl->read_header(file)) {
+        std::cerr << "Archive::extract: Failed to read header" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Archive::extract: Found " << impl->entries.size() << " entries" << std::endl;
     
     fs::create_directories(output_dir);
     
@@ -198,28 +232,49 @@ bool Archive::extract(const std::string& archive_path, const std::string& output
     }
     
     for (const auto& entry : impl->entries) {
+        std::cout << "  Extracting: " << entry.name << " (original=" << entry.original_size 
+                  << ", compressed=" << entry.compressed_size << ", offset=" << entry.offset << ")" << std::endl;
+        
         file.seekg(entry.offset, std::ios::beg);
-        if (!file.good()) return false;
-        
-        std::vector<uint8_t> compressed(entry.compressed_size);
-        file.read(reinterpret_cast<char*>(compressed.data()), entry.compressed_size);
-        if (!file.good()) return false;
-        
-        std::vector<uint8_t> decompressed = decompressor.decompress(compressed);
-        
-        uint32_t crc = XXH32(decompressed.data(), decompressed.size(), 0);
-        if (crc != entry.crc32) {
+        if (!file.good()) {
+            std::cerr << "  Failed to seek to offset " << entry.offset << std::endl;
             return false;
         }
         
+        std::vector<uint8_t> compressed(entry.compressed_size);
+        file.read(reinterpret_cast<char*>(compressed.data()), entry.compressed_size);
+        if (!file.good()) {
+            std::cerr << "  Failed to read compressed data" << std::endl;
+            return false;
+        }
+        
+        std::cout << "  Decompressing..." << std::endl;
+        std::vector<uint8_t> decompressed = decompressor.decompress(compressed);
+        std::cout << "  Decompressed size: " << decompressed.size() << " bytes" << std::endl;
+        
+        uint32_t crc = XXH32(decompressed.data(), decompressed.size(), 0);
+        if (crc != entry.crc32) {
+            std::cerr << "  CRC mismatch! Expected " << entry.crc32 << ", got " << crc << std::endl;
+            return false;
+        }
+        std::cout << "  CRC OK" << std::endl;
+        
         std::string output_path = output_dir + "/" + entry.name;
         std::ofstream output(output_path, std::ios::binary);
-        if (!output) return false;
+        if (!output) {
+            std::cerr << "  Failed to create output file: " << output_path << std::endl;
+            return false;
+        }
         
         output.write(reinterpret_cast<const char*>(decompressed.data()), decompressed.size());
-        if (!output.good()) return false;
+        if (!output.good()) {
+            std::cerr << "  Failed to write output file" << std::endl;
+            return false;
+        }
+        std::cout << "  Wrote: " << output_path << std::endl;
     }
     
+    std::cout << "Archive::extract: SUCCESS" << std::endl;
     return true;
 }
 
