@@ -272,7 +272,7 @@ std::vector<uint8_t> Decompressor::decompress_file(const std::string& filepath) 
     std::vector<uint8_t> data(size);
     file.read(reinterpret_cast<char*>(data.data()), size);
     
-    return decompress(data);
+    return decompress(data, 0);  // or read the original size from file format if available
 }
 
 } // namespace NekoArchive
