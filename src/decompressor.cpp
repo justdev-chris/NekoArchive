@@ -11,11 +11,6 @@
 #include <functional>
 #include <unordered_map>
 
-// pls work fix
-void AES_init_ctx(struct AES_ctx* ctx, const unsigned char* key);
-void AES_ECB_encrypt(struct AES_ctx* ctx, unsigned char* buf);
-void AES_ECB_decrypt(struct AES_ctx* ctx, unsigned char* buf);
-
 namespace NekoArchive {
 
 struct Decompressor::Impl {
@@ -24,20 +19,11 @@ struct Decompressor::Impl {
     
     Impl() : threads(std::thread::hardware_concurrency()) {}
     
-    // Simple deterministic key derivation from password (matching compressor)
-    void derive_key_and_iv(const std::string& password, uint8_t* key, uint8_t* iv) {
-        memset(key, 0, 16);
-        memset(iv, 0, 16);
-        
-        for (size_t i = 0; i < password.size(); ++i) {
-            key[i % 16] ^= password[i];
-            iv[i % 16] ^= (password[i] >> 4);
-        }
-        
-        for (int i = 0; i < 16; ++i) {
-            key[i] = ((key[i] * 31) + (i * 7)) & 0xFF;
-            iv[i] = ((iv[i] * 17) + (i * 13)) & 0xFF;
-        }
+    std::vector<uint8_t> decrypt(const std::vector<uint8_t>& data) {
+        if (password.empty() || data.empty()) return data;
+        AES::AESCipher cipher;
+        cipher.setKey(password);
+        return cipher.decrypt(data);
     }
     
     struct HuffmanNode {
@@ -86,7 +72,6 @@ struct Decompressor::Impl {
         if (input.empty()) return {};
         
         size_t pos = 0;
-        
         uint8_t num_symbols = input[pos++];
         if (num_symbols == 0) return {};
         
@@ -123,7 +108,6 @@ struct Decompressor::Impl {
         std::string bitstring;
         bitstring.reserve(bit_length);
         
-        size_t total_bits = (input.size() - pos) * 8 - padding;
         for (size_t i = pos; i < input.size() && bitstring.size() < bit_length; ++i) {
             uint8_t byte = input[i];
             for (int j = 7; j >= 0 && bitstring.size() < bit_length; --j) {
@@ -198,14 +182,7 @@ struct Decompressor::Impl {
         lzma_end(&stream);
         return output;
     }
-    
-    std::vector<uint8_t> decrypt(const std::vector<uint8_t>& data) {
-        if (password.empty() || data.empty()) return data;
-    
-        AES::AESCipher cipher;
-        cipher.setKey(password);
-        return cipher.decrypt(data);
-    }
+};
 
 Decompressor::Decompressor() : impl(std::make_unique<Impl>()) {}
 Decompressor::~Decompressor() = default;
@@ -223,29 +200,24 @@ std::vector<uint8_t> Decompressor::decompress(const std::vector<uint8_t>& input)
     
     std::vector<uint8_t> result = input;
     
-    // Decrypt if password is set
     if (!impl->password.empty()) {
         result = impl->decrypt(result);
     }
     
-    // Try to detect compression type and decode
     std::vector<uint8_t> output;
     
-    // Try Zstd decompression (CAT mode)
     size_t estimated_size = result.size() * 4;
     output = impl->zstd_decompress(result, estimated_size);
     if (!output.empty()) {
         return output;
     }
     
-    // Try LZMA decompression (TIGER mode)
     estimated_size = result.size() * 4;
     output = impl->lzma_decompress(result, estimated_size);
     if (!output.empty()) {
         return output;
     }
     
-    // Try Huffman + LZ77 (HARE mode)
     output = impl->huffman_decode(result);
     if (!output.empty()) {
         output = impl->lz77_decompress(output);
@@ -254,7 +226,6 @@ std::vector<uint8_t> Decompressor::decompress(const std::vector<uint8_t>& input)
         }
     }
     
-    // If nothing worked, return original
     return result;
 }
 
