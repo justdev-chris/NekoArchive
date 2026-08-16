@@ -8,6 +8,21 @@
 #include <xxhash.h>
 #include <iostream>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <codecvt>
+#include <locale>
+
+// Convert UTF-8 string to wide string (Windows UTF-16)
+std::wstring utf8_to_wstring(const std::string& str) {
+    if (str.empty()) return std::wstring();
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), NULL, 0);
+    std::wstring wstr(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), &wstr[0], size_needed);
+    return wstr;
+}
+#endif
+
 namespace fs = std::filesystem;
 
 namespace NekoArchive {
@@ -138,6 +153,49 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
     
     for (const auto& filepath : input_files) {
         std::cout << "  Reading file: " << filepath << std::endl;
+        
+        std::vector<uint8_t> data;
+        size_t size = 0;
+        
+#ifdef _WIN32
+        // Use Windows wide API for Unicode paths
+        std::wstring wpath = utf8_to_wstring(filepath);
+        
+        HANDLE hFile = CreateFileW(
+            wpath.c_str(),
+            GENERIC_READ,
+            FILE_SHARE_READ,
+            NULL,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL
+        );
+        
+        if (hFile == INVALID_HANDLE_VALUE) {
+            std::cerr << "  Failed to open: " << filepath << " (error: " << GetLastError() << ")" << std::endl;
+            continue;
+        }
+        
+        LARGE_INTEGER fileSize;
+        if (!GetFileSizeEx(hFile, &fileSize)) {
+            CloseHandle(hFile);
+            std::cerr << "  Failed to get file size: " << filepath << std::endl;
+            continue;
+        }
+        
+        size = static_cast<size_t>(fileSize.QuadPart);
+        std::cout << "  File size: " << size << " bytes" << std::endl;
+        
+        data.resize(size);
+        DWORD bytesRead = 0;
+        if (!ReadFile(hFile, data.data(), static_cast<DWORD>(size), &bytesRead, NULL) || bytesRead != size) {
+            CloseHandle(hFile);
+            std::cerr << "  Failed to read file: " << filepath << std::endl;
+            continue;
+        }
+        CloseHandle(hFile);
+#else
+        // POSIX version
         std::ifstream input(filepath, std::ios::binary);
         if (!input) {
             std::cerr << "  Failed to open: " << filepath << std::endl;
@@ -145,13 +203,14 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
         }
         
         input.seekg(0, std::ios::end);
-        size_t size = input.tellg();
+        size = input.tellg();
         input.seekg(0, std::ios::beg);
         
         std::cout << "  File size: " << size << " bytes" << std::endl;
         
-        std::vector<uint8_t> data(size);
+        data.resize(size);
         input.read(reinterpret_cast<char*>(data.data()), size);
+#endif
         
         std::cout << "  Compressing..." << std::endl;
         std::vector<uint8_t> compressed = compressor.compress(data);
@@ -259,11 +318,9 @@ bool Archive::extract(const std::string& archive_path, const std::string& output
         }
         
         std::cout << "  Decompressing..." << std::endl;
-        // Pass the original size to decompressor
         std::vector<uint8_t> decompressed = decompressor.decompress(compressed, entry.original_size);
         std::cout << "  Decompressed size: " << decompressed.size() << " bytes" << std::endl;
         
-        // If decompression failed (returned compressed data unchanged), try without password
         if (decompressed.size() == entry.compressed_size && !impl->password.empty()) {
             std::cout << "  Decompression with password failed, trying without..." << std::endl;
             Decompressor no_pass_decompressor;
@@ -279,6 +336,34 @@ bool Archive::extract(const std::string& archive_path, const std::string& output
         std::cout << "  CRC OK" << std::endl;
         
         std::string output_path = output_dir + "/" + entry.name;
+        
+#ifdef _WIN32
+        // Use Windows wide API for writing
+        std::wstring woutput_path = utf8_to_wstring(output_path);
+        HANDLE hOutFile = CreateFileW(
+            woutput_path.c_str(),
+            GENERIC_WRITE,
+            0,
+            NULL,
+            CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL
+        );
+        
+        if (hOutFile == INVALID_HANDLE_VALUE) {
+            std::cerr << "  Failed to create output file: " << output_path << std::endl;
+            return false;
+        }
+        
+        DWORD bytesWritten = 0;
+        if (!WriteFile(hOutFile, decompressed.data(), static_cast<DWORD>(decompressed.size()), &bytesWritten, NULL) || bytesWritten != decompressed.size()) {
+            CloseHandle(hOutFile);
+            std::cerr << "  Failed to write output file" << std::endl;
+            return false;
+        }
+        CloseHandle(hOutFile);
+#else
+        // POSIX version
         std::ofstream output(output_path, std::ios::binary);
         if (!output) {
             std::cerr << "  Failed to create output file: " << output_path << std::endl;
@@ -290,6 +375,8 @@ bool Archive::extract(const std::string& archive_path, const std::string& output
             std::cerr << "  Failed to write output file" << std::endl;
             return false;
         }
+#endif
+        
         std::cout << "  Wrote: " << output_path << std::endl;
     }
     
