@@ -136,6 +136,7 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
         compressor.set_password(impl->password);
     }
     
+    // First pass: compress all files
     for (const auto& filepath : input_files) {
         std::cout << "  Reading file: " << filepath << std::endl;
         std::ifstream input(filepath, std::ios::binary);
@@ -171,24 +172,31 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
     
     std::cout << "Total entries: " << impl->entries.size() << std::endl;
     
-    // Write header and index FIRST
+    // Write header
     if (!impl->write_header(file)) {
         std::cerr << "Archive::create: Failed to write header" << std::endl;
         return false;
     }
     
-    if (!impl->write_index(file)) {
-        std::cerr << "Archive::create: Failed to write index" << std::endl;
-        return false;
+    // Calculate offsets BEFORE writing index (they start after the index)
+    // We need to know the index size first
+    uint64_t index_size = 0;
+    for (const auto& entry : impl->entries) {
+        index_size += 2 + entry.name.size() + 8 + 8 + 8 + 4;
     }
     
-    // NOW calculate offsets based on current file position
-    uint64_t data_start = file.tellp();
+    uint64_t data_start = 14 + index_size; // header (4+1+1+8) + index size
     uint64_t offset = data_start;
     for (size_t i = 0; i < impl->entries.size(); ++i) {
         impl->entries[i].offset = offset;
         std::cout << "  Entry " << i << ": offset=" << offset << std::endl;
         offset += impl->compressed_data[i].size();
+    }
+    
+    // Now write index with correct offsets
+    if (!impl->write_index(file)) {
+        std::cerr << "Archive::create: Failed to write index" << std::endl;
+        return false;
     }
     
     // Write compressed data
@@ -256,8 +264,7 @@ bool Archive::extract(const std::string& archive_path, const std::string& output
         std::vector<uint8_t> decompressed = decompressor.decompress(compressed);
         std::cout << "  Decompressed size: " << decompressed.size() << " bytes" << std::endl;
         
-        // If decompression failed (returned compressed data unchanged), and we have a password
-        // try without password (maybe the archive isn't encrypted)
+        // If decompression failed (returned compressed data unchanged), try without password
         if (decompressed.size() == entry.compressed_size && !impl->password.empty()) {
             std::cout << "  Decompression with password failed, trying without..." << std::endl;
             Decompressor no_pass_decompressor;
@@ -268,10 +275,7 @@ bool Archive::extract(const std::string& archive_path, const std::string& output
         uint32_t crc = XXH32(decompressed.data(), decompressed.size(), 0);
         if (crc != entry.crc32) {
             std::cerr << "  CRC mismatch! Expected " << entry.crc32 << ", got " << crc << std::endl;
-            // Try using the compressor's decompression directly
-            std::cout << "  Trying direct decompression with stored mode..." << std::endl;
-            // We need to decompress based on the mode stored in the archive
-            // This will be handled by the decompressor's detection
+            return false;
         }
         std::cout << "  CRC OK" << std::endl;
         
