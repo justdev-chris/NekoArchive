@@ -11,6 +11,13 @@
 #include <functional>
 #include <unordered_map>
 
+// pls work fix
+extern "C" {
+    void AES_init_ctx(struct AES_ctx* ctx, const unsigned char* key);
+    void AES_ECB_encrypt(struct AES_ctx* ctx, unsigned char* buf);
+    void AES_ECB_decrypt(struct AES_ctx* ctx, unsigned char* buf);
+}
+
 namespace NekoArchive {
 
 struct Decompressor::Impl {
