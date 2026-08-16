@@ -14,7 +14,7 @@ public:
     void set_password(const std::string& password);
     void set_thread_count(int threads);
 
-    std::vector<uint8_t> decompress(const std::vector<uint8_t>& input);
+    std::vector<uint8_t> decompress(const std::vector<uint8_t>& input, size_t original_size);
     std::vector<uint8_t> decompress_file(const std::string& filepath);
 
 private:
