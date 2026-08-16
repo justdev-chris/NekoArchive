@@ -1,5 +1,5 @@
 #include "nekoarchive/decompressor.h"
-#include "nekoarchive/aes.h"
+#include "nekoarchive/aes_custom.h"
 #include <zstd.h>
 #include <lzma.h>
 #include <xxhash.h>
