@@ -6,6 +6,21 @@
 #include <vector>
 #include <filesystem>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <codecvt>
+#include <locale>
+
+// Convert UTF-8 string to wide string (Windows UTF-16)
+std::wstring utf8_to_wstring(const std::string& str) {
+    if (str.empty()) return std::wstring();
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), NULL, 0);
+    std::wstring wstr(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), &wstr[0], size_needed);
+    return wstr;
+}
+#endif
+
 void print_usage() {
     std::cout << "NekoArchive v0.1 - Purr-fect compression\n\n";
     std::cout << "Usage:\n";
@@ -23,7 +38,7 @@ NekoArchive::CompressionMode parse_mode(const std::string& mode_str) {
     if (mode_str == "hare") return NekoArchive::CompressionMode::HARE;
     if (mode_str == "cat") return NekoArchive::CompressionMode::CAT;
     if (mode_str == "tiger") return NekoArchive::CompressionMode::TIGER;
-    return NekoArchive::CompressionMode::CAT; // default
+    return NekoArchive::CompressionMode::CAT;
 }
 
 int main(int argc, char* argv[]) {
@@ -54,6 +69,20 @@ int main(int argc, char* argv[]) {
             }
             
             std::vector<std::string> files;
+            
+#ifdef _WIN32
+            // Use wide-character directory iteration
+            std::wstring wpath = utf8_to_wstring(input);
+            if (std::filesystem::is_directory(wpath)) {
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(wpath)) {
+                    if (!entry.is_directory()) {
+                        files.push_back(entry.path().string());
+                    }
+                }
+            } else {
+                files.push_back(input);
+            }
+#else
             if (std::filesystem::is_directory(input)) {
                 for (const auto& entry : std::filesystem::recursive_directory_iterator(input)) {
                     if (!entry.is_directory()) {
@@ -63,6 +92,7 @@ int main(int argc, char* argv[]) {
             } else {
                 files.push_back(input);
             }
+#endif
             
             NekoArchive::Archive archive;
             std::string mode_name = (mode == NekoArchive::CompressionMode::HARE) ? "🐇 HARE" :
