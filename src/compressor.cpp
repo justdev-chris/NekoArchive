@@ -12,11 +12,6 @@
 #include <fstream>
 #include <algorithm>
 
-// pls work
-void AES_init_ctx(struct AES_ctx* ctx, const unsigned char* key);
-void AES_ECB_encrypt(struct AES_ctx* ctx, unsigned char* buf);
-void AES_ECB_decrypt(struct AES_ctx* ctx, unsigned char* buf);
-
 namespace NekoArchive {
 
 struct Compressor::Impl {
@@ -27,20 +22,11 @@ struct Compressor::Impl {
     
     Impl() : mode(CompressionMode::CAT), threads(std::thread::hardware_concurrency()), dict_size(1 << 20) {}
     
-    // Simple deterministic key derivation from password
-    void derive_key_and_iv(const std::string& password, uint8_t* key, uint8_t* iv) {
-        memset(key, 0, 16);
-        memset(iv, 0, 16);
-        
-        for (size_t i = 0; i < password.size(); ++i) {
-            key[i % 16] ^= password[i];
-            iv[i % 16] ^= (password[i] >> 4);
-        }
-        
-        for (int i = 0; i < 16; ++i) {
-            key[i] = ((key[i] * 31) + (i * 7)) & 0xFF;
-            iv[i] = ((iv[i] * 17) + (i * 13)) & 0xFF;
-        }
+    std::vector<uint8_t> encrypt(const std::vector<uint8_t>& data) {
+        if (password.empty() || data.empty()) return data;
+        AES::AESCipher cipher;
+        cipher.setKey(password);
+        return cipher.encrypt(data);
     }
     
     std::vector<uint8_t> lz77_compress(const std::vector<uint8_t>& input) {
@@ -381,40 +367,6 @@ struct Compressor::Impl {
         }
         
         lzma_end(&stream);
-        return output;
-    }
-    
-    std::vector<uint8_t> encrypt(const std::vector<uint8_t>& data) {
-        if (password.empty() || data.empty()) return data;
-    
-        AES::AESCipher cipher;
-        cipher.setKey(password);
-        return cipher.encrypt(data);
-    }
-    
-    std::vector<uint8_t> decrypt(const std::vector<uint8_t>& data) {
-        if (password.empty() || data.empty()) return data;
-        
-        uint8_t key[16];
-        uint8_t iv[16];
-        derive_key_and_iv(password, key, iv);
-        
-        struct AES_ctx ctx;
-        AES_init_ctx(&ctx, key);
-        
-        std::vector<uint8_t> output = data;
-        
-        for (size_t i = 0; i < output.size(); i += 16) {
-            AES_ECB_decrypt(&ctx, output.data() + i);
-        }
-        
-        if (!output.empty()) {
-            uint8_t pad_value = output.back();
-            if (pad_value > 0 && pad_value <= 16) {
-                output.resize(output.size() - pad_value);
-            }
-        }
-        
         return output;
     }
 };
