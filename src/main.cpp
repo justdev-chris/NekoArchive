@@ -7,11 +7,6 @@
 #include <vector>
 #include <filesystem>
 
-#ifdef _WIN32
-#include <windows.h>
-#include <codecvt>
-#include <locale>
-
 void print_usage() {
     std::cout << "NekoArchive v0.1 - Purr-fect compression\n\n";
     std::cout << "Usage:\n";
