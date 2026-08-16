@@ -209,10 +209,10 @@ void Decompressor::set_thread_count(int threads) {
     impl->threads = threads;
 }
 
-std::vector<uint8_t> Decompressor::decompress(const std::vector<uint8_t>& input) {
+std::vector<uint8_t> Decompressor::decompress(const std::vector<uint8_t>& input, size_t original_size) {
     if (input.empty()) return {};
     
-    std::cout << "decompress: input size = " << input.size() << std::endl;
+    std::cout << "decompress: input size = " << input.size() << ", original_size = " << original_size << std::endl;
     
     std::vector<uint8_t> result = input;
     
@@ -224,22 +224,24 @@ std::vector<uint8_t> Decompressor::decompress(const std::vector<uint8_t>& input)
     
     std::vector<uint8_t> output;
     
-    // Try Zstd decompression (CAT mode)
-    size_t estimated_size = result.size() * 10;
-    std::cout << "  Trying Zstd decompression..." << std::endl;
-    output = impl->zstd_decompress(result, estimated_size);
-    if (!output.empty()) {
-        std::cout << "decompress: Zstd succeeded, output size = " << output.size() << std::endl;
-        return output;
+    // Try Zstd decompression (CAT mode) with correct original size
+    if (original_size > 0) {
+        std::cout << "  Trying Zstd decompression..." << std::endl;
+        output = impl->zstd_decompress(result, original_size);
+        if (!output.empty()) {
+            std::cout << "decompress: Zstd succeeded, output size = " << output.size() << std::endl;
+            return output;
+        }
     }
     
-    // Try LZMA decompression (TIGER mode)
-    estimated_size = result.size() * 10;
-    std::cout << "  Trying LZMA decompression..." << std::endl;
-    output = impl->lzma_decompress(result, estimated_size);
-    if (!output.empty()) {
-        std::cout << "decompress: LZMA succeeded, output size = " << output.size() << std::endl;
-        return output;
+    // Try LZMA decompression (TIGER mode) with correct original size
+    if (original_size > 0) {
+        std::cout << "  Trying LZMA decompression..." << std::endl;
+        output = impl->lzma_decompress(result, original_size);
+        if (!output.empty()) {
+            std::cout << "decompress: LZMA succeeded, output size = " << output.size() << std::endl;
+            return output;
+        }
     }
     
     // Try Huffman + LZ77 (HARE mode)
