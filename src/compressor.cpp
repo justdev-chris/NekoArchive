@@ -14,11 +14,6 @@
 #include <algorithm>
 #include <iostream>
 
-#ifdef _WIN32
-#include <windows.h>
-#include <codecvt>
-#include <locale>
-
 namespace NekoArchive {
 
 struct Compressor::Impl {
