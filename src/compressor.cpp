@@ -11,6 +11,22 @@
 #include <unordered_map>
 #include <fstream>
 #include <algorithm>
+#include <iostream>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <codecvt>
+#include <locale>
+
+// Convert UTF-8 string to wide string (Windows UTF-16)
+std::wstring utf8_to_wstring(const std::string& str) {
+    if (str.empty()) return std::wstring();
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), NULL, 0);
+    std::wstring wstr(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), &wstr[0], size_needed);
+    return wstr;
+}
+#endif
 
 namespace NekoArchive {
 
@@ -411,6 +427,42 @@ std::vector<uint8_t> Compressor::compress(const std::vector<uint8_t>& input) {
 }
 
 std::vector<uint8_t> Compressor::compress_file(const std::string& filepath) {
+    std::vector<uint8_t> data;
+    
+#ifdef _WIN32
+    // Use Windows wide API for Unicode paths
+    std::wstring wpath = utf8_to_wstring(filepath);
+    
+    HANDLE hFile = CreateFileW(
+        wpath.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return {};
+    }
+    
+    LARGE_INTEGER fileSize;
+    if (!GetFileSizeEx(hFile, &fileSize)) {
+        CloseHandle(hFile);
+        return {};
+    }
+    
+    size_t size = static_cast<size_t>(fileSize.QuadPart);
+    data.resize(size);
+    
+    DWORD bytesRead = 0;
+    if (!ReadFile(hFile, data.data(), static_cast<DWORD>(size), &bytesRead, NULL) || bytesRead != size) {
+        CloseHandle(hFile);
+        return {};
+    }
+    CloseHandle(hFile);
+#else
     std::ifstream file(filepath, std::ios::binary);
     if (!file) return {};
     
@@ -418,8 +470,9 @@ std::vector<uint8_t> Compressor::compress_file(const std::string& filepath) {
     size_t size = file.tellg();
     file.seekg(0, std::ios::beg);
     
-    std::vector<uint8_t> data(size);
+    data.resize(size);
     file.read(reinterpret_cast<char*>(data.data()), size);
+#endif
     
     return compress(data);
 }
