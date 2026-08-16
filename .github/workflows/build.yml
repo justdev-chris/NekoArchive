@@ -20,9 +20,11 @@ jobs:
         New-Item -ItemType Directory -Force -Path src/crypto | Out-Null
         curl.exe -L -o src/crypto/aes.c https://raw.githubusercontent.com/kokke/tiny-AES-c/master/aes.c
 
-    - name: Fix AES header signatures
+    - name: Fix AES header to match implementation
       run: |
-        # Replace const struct AES_ctx* with struct AES_ctx* in function declarations
+        # Replace uint8_t with unsigned char
+        (Get-Content include/nekoarchive/aes.h) -replace 'uint8_t', 'unsigned char' | Set-Content include/nekoarchive/aes.h
+        # Remove const from ECB functions
         (Get-Content include/nekoarchive/aes.h) -replace 'void AES_ECB_encrypt\(const struct AES_ctx\*', 'void AES_ECB_encrypt(struct AES_ctx*' | Set-Content include/nekoarchive/aes.h
         (Get-Content include/nekoarchive/aes.h) -replace 'void AES_ECB_decrypt\(const struct AES_ctx\*', 'void AES_ECB_decrypt(struct AES_ctx*' | Set-Content include/nekoarchive/aes.h
 
