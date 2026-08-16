@@ -9,11 +9,6 @@
 #include <xxhash.h>
 #include <iostream>
 
-#ifdef _WIN32
-#include <windows.h>
-#include <codecvt>
-#include <locale>
-
 namespace fs = std::filesystem;
 
 namespace NekoArchive {
