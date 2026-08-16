@@ -201,7 +201,6 @@ struct Decompressor::Impl {
         uint8_t iv[16];
         derive_key_and_iv(password, key, iv);
         
-        // Decrypt using AES-128-ECB
         struct AES_ctx ctx;
         AES_init_ctx(&ctx, key);
         
