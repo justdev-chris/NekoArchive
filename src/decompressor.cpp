@@ -13,11 +13,6 @@
 #include <unordered_map>
 #include <iostream>
 
-#ifdef _WIN32
-#include <windows.h>
-#include <codecvt>
-#include <locale>
-
 namespace NekoArchive {
 
 struct Decompressor::Impl {
