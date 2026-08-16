@@ -57,14 +57,9 @@ int main(int argc, char* argv[]) {
             std::vector<std::string> files;
             
 #ifdef _WIN32
-            // Use wide-character directory iteration
-            std::wstring wpath = utf8_to_wstring(input);
-            if (std::filesystem::is_directory(wpath)) {
-                for (const auto& entry : std::filesystem::recursive_directory_iterator(wpath)) {
-                    if (!entry.is_directory()) {
-                        files.push_back(entry.path().string());
-                    }
-                }
+            // Use wide-character directory traversal
+            if (is_directory_wide(input)) {
+                files = list_files_recursive(input);
             } else {
                 files.push_back(input);
             }
@@ -79,6 +74,11 @@ int main(int argc, char* argv[]) {
                 files.push_back(input);
             }
 #endif
+            
+            if (files.empty()) {
+                std::cerr << "Error: No files found in " << input << std::endl;
+                return 1;
+            }
             
             NekoArchive::Archive archive;
             std::string mode_name = (mode == NekoArchive::CompressionMode::HARE) ? "🐇 HARE" :
