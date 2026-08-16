@@ -201,31 +201,11 @@ struct Decompressor::Impl {
     
     std::vector<uint8_t> decrypt(const std::vector<uint8_t>& data) {
         if (password.empty() || data.empty()) return data;
-        
-        uint8_t key[16];
-        uint8_t iv[16];
-        derive_key_and_iv(password, key, iv);
-        
-        struct AES_ctx ctx;
-        AES_init_ctx(&ctx, key);
-        
-        std::vector<uint8_t> output = data;
-        
-        for (size_t i = 0; i < output.size(); i += 16) {
-            AES_ECB_decrypt(&ctx, output.data() + i);
-        }
-        
-        // Remove PKCS7 padding
-        if (!output.empty()) {
-            uint8_t pad_value = output.back();
-            if (pad_value > 0 && pad_value <= 16) {
-                output.resize(output.size() - pad_value);
-            }
-        }
-        
-        return output;
+    
+        AES::AESCipher cipher;
+        cipher.setKey(password);
+        return cipher.decrypt(data);
     }
-};
 
 Decompressor::Decompressor() : impl(std::make_unique<Impl>()) {}
 Decompressor::~Decompressor() = default;
