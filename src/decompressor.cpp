@@ -10,6 +10,7 @@
 #include <queue>
 #include <functional>
 #include <unordered_map>
+#include <iostream>
 
 namespace NekoArchive {
 
@@ -139,14 +140,20 @@ struct Decompressor::Impl {
     std::vector<uint8_t> zstd_decompress(const std::vector<uint8_t>& input, size_t original_size) {
         if (input.empty() || original_size == 0) return {};
         
+        std::cout << "  zstd_decompress: input=" << input.size() << ", original_size=" << original_size << std::endl;
+        
         std::vector<uint8_t> output(original_size);
         size_t decompressed = ZSTD_decompress(
             output.data(), original_size,
             input.data(), input.size()
         );
         
-        if (ZSTD_isError(decompressed)) return {};
+        if (ZSTD_isError(decompressed)) {
+            std::cout << "  zstd_decompress ERROR: " << ZSTD_getErrorName(decompressed) << std::endl;
+            return {};
+        }
         
+        std::cout << "  zstd_decompress: success, decompressed=" << decompressed << std::endl;
         output.resize(decompressed);
         return output;
     }
@@ -154,9 +161,14 @@ struct Decompressor::Impl {
     std::vector<uint8_t> lzma_decompress(const std::vector<uint8_t>& input, size_t original_size) {
         if (input.empty() || original_size == 0) return {};
         
+        std::cout << "  lzma_decompress: input=" << input.size() << ", original_size=" << original_size << std::endl;
+        
         lzma_stream stream = LZMA_STREAM_INIT;
         lzma_ret ret = lzma_auto_decoder(&stream, UINT64_MAX, 0);
-        if (ret != LZMA_OK) return {};
+        if (ret != LZMA_OK) {
+            std::cout << "  lzma_decompress: auto_decoder failed" << std::endl;
+            return {};
+        }
         
         std::vector<uint8_t> output;
         output.reserve(original_size);
@@ -172,6 +184,7 @@ struct Decompressor::Impl {
             ret = lzma_code(&stream, LZMA_RUN);
             if (ret != LZMA_OK && ret != LZMA_STREAM_END) {
                 lzma_end(&stream);
+                std::cout << "  lzma_decompress: lzma_code failed with " << ret << std::endl;
                 return {};
             }
             output.insert(output.end(), outbuf, outbuf + sizeof(outbuf) - stream.avail_out);
@@ -180,6 +193,7 @@ struct Decompressor::Impl {
         }
         
         lzma_end(&stream);
+        std::cout << "  lzma_decompress: success, output=" << output.size() << std::endl;
         return output;
     }
 };
@@ -198,34 +212,50 @@ void Decompressor::set_thread_count(int threads) {
 std::vector<uint8_t> Decompressor::decompress(const std::vector<uint8_t>& input) {
     if (input.empty()) return {};
     
+    std::cout << "decompress: input size = " << input.size() << std::endl;
+    
     std::vector<uint8_t> result = input;
     
     if (!impl->password.empty()) {
+        std::cout << "  decrypting..." << std::endl;
         result = impl->decrypt(result);
+        std::cout << "  decrypted size = " << result.size() << std::endl;
     }
     
     std::vector<uint8_t> output;
     
-    size_t estimated_size = result.size() * 4;
+    // Try Zstd decompression (CAT mode)
+    size_t estimated_size = result.size() * 10;
+    std::cout << "  Trying Zstd decompression..." << std::endl;
     output = impl->zstd_decompress(result, estimated_size);
     if (!output.empty()) {
+        std::cout << "decompress: Zstd succeeded, output size = " << output.size() << std::endl;
         return output;
     }
     
-    estimated_size = result.size() * 4;
+    // Try LZMA decompression (TIGER mode)
+    estimated_size = result.size() * 10;
+    std::cout << "  Trying LZMA decompression..." << std::endl;
     output = impl->lzma_decompress(result, estimated_size);
     if (!output.empty()) {
+        std::cout << "decompress: LZMA succeeded, output size = " << output.size() << std::endl;
         return output;
     }
     
+    // Try Huffman + LZ77 (HARE mode)
+    std::cout << "  Trying Huffman + LZ77 decompression..." << std::endl;
     output = impl->huffman_decode(result);
     if (!output.empty()) {
+        std::cout << "  Huffman decode success, size = " << output.size() << std::endl;
         output = impl->lz77_decompress(output);
         if (!output.empty()) {
+            std::cout << "  LZ77 decode success, size = " << output.size() << std::endl;
+            std::cout << "decompress: Huffman+LZ77 succeeded" << std::endl;
             return output;
         }
     }
     
+    std::cout << "decompress: ALL methods failed, returning original" << std::endl;
     return result;
 }
 
