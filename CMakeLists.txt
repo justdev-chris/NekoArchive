@@ -14,11 +14,7 @@ add_library(nekoarchive STATIC
     src/archive.cpp
     src/compressor.cpp
     src/decompressor.cpp
-    src/crypto/aes.c
 )
-
-# Force aes.c to be compiled as C
-set_source_files_properties(src/crypto/aes.c PROPERTIES LANGUAGE C)
 
 target_include_directories(nekoarchive PUBLIC include)
 
