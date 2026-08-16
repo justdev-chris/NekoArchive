@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(NekoArchive VERSION 0.1.0 LANGUAGES CXX)
+project(NekoArchive VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,9 @@ add_library(nekoarchive STATIC
     src/decompressor.cpp
     src/crypto/aes.c
 )
+
+# Force aes.c to be compiled as C
+set_source_files_properties(src/crypto/aes.c PROPERTIES LANGUAGE C)
 
 target_include_directories(nekoarchive PUBLIC include)
 
