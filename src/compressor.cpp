@@ -386,28 +386,10 @@ struct Compressor::Impl {
     
     std::vector<uint8_t> encrypt(const std::vector<uint8_t>& data) {
         if (password.empty() || data.empty()) return data;
-        
-        uint8_t key[16];
-        uint8_t iv[16];
-        derive_key_and_iv(password, key, iv);
-        
-        size_t padded_size = ((data.size() + 15) / 16) * 16;
-        std::vector<uint8_t> padded(padded_size);
-        memcpy(padded.data(), data.data(), data.size());
-        
-        uint8_t pad_value = static_cast<uint8_t>(padded_size - data.size());
-        for (size_t i = data.size(); i < padded_size; ++i) {
-            padded[i] = pad_value;
-        }
-        
-        struct AES_ctx ctx;
-        AES_init_ctx(&ctx, key);
-        
-        for (size_t i = 0; i < padded_size; i += 16) {
-            AES_ECB_encrypt(&ctx, padded.data() + i);
-        }
-        
-        return padded;
+    
+        AES::AESCipher cipher;
+        cipher.setKey(password);
+        return cipher.encrypt(data);
     }
     
     std::vector<uint8_t> decrypt(const std::vector<uint8_t>& data) {
