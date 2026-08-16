@@ -24,7 +24,6 @@ struct Compressor::Impl {
     
     // Simple deterministic key derivation from password
     void derive_key_and_iv(const std::string& password, uint8_t* key, uint8_t* iv) {
-        // Hash the password by XORing and rotating
         memset(key, 0, 16);
         memset(iv, 0, 16);
         
@@ -33,7 +32,6 @@ struct Compressor::Impl {
             iv[i % 16] ^= (password[i] >> 4);
         }
         
-        // Expand key material
         for (int i = 0; i < 16; ++i) {
             key[i] = ((key[i] * 31) + (i * 7)) & 0xFF;
             iv[i] = ((iv[i] * 17) + (i * 13)) & 0xFF;
@@ -388,17 +386,15 @@ struct Compressor::Impl {
         uint8_t iv[16];
         derive_key_and_iv(password, key, iv);
         
-        // Pad to 16-byte blocks (PKCS7)
         size_t padded_size = ((data.size() + 15) / 16) * 16;
         std::vector<uint8_t> padded(padded_size);
         memcpy(padded.data(), data.data(), data.size());
         
-        uint8_t pad_value = padded_size - data.size();
+        uint8_t pad_value = static_cast<uint8_t>(padded_size - data.size());
         for (size_t i = data.size(); i < padded_size; ++i) {
             padded[i] = pad_value;
         }
         
-        // Encrypt using AES-128-ECB
         struct AES_ctx ctx;
         AES_init_ctx(&ctx, key);
         
@@ -416,7 +412,6 @@ struct Compressor::Impl {
         uint8_t iv[16];
         derive_key_and_iv(password, key, iv);
         
-        // Decrypt using AES-128-ECB
         struct AES_ctx ctx;
         AES_init_ctx(&ctx, key);
         
@@ -426,7 +421,6 @@ struct Compressor::Impl {
             AES_ECB_decrypt(&ctx, output.data() + i);
         }
         
-        // Remove PKCS7 padding
         if (!output.empty()) {
             uint8_t pad_value = output.back();
             if (pad_value > 0 && pad_value <= 16) {
