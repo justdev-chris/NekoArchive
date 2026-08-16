@@ -1,44 +1,47 @@
-name: Build NKS
-
+name: Build NekoArchive
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    
+    runs-on: windows-latest
+
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
-    
-    - name: Create output directory
-      run: mkdir -p output
-    
-    - name: Install dependencies
+
+    - name: Clone vcpkg
+      run: git clone https://github.com/microsoft/vcpkg ${{ github.workspace }}/vcpkg
+
+    - name: Download Tiny-AES-C
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          qemu-system-x86 \
-          qemu-utils \
-          xorriso \
-          mtools \
-          dosfstools \
-          gcc \
-          make \
-          git \
-          curl \
-          bzip2 \
-          xz-utils
-    
-    - name: Build NKS
+        New-Item -ItemType Directory -Force -Path include/nekoarchive | Out-Null
+        curl.exe -L -o include/nekoarchive/aes.h https://raw.githubusercontent.com/kokke/tiny-AES-c/master/aes.h
+        New-Item -ItemType Directory -Force -Path src/crypto | Out-Null
+        curl.exe -L -o src/crypto/aes.c https://raw.githubusercontent.com/kokke/tiny-AES-c/master/aes.c
+
+    - name: Fix AES header and source to use unsigned char
       run: |
-        make all
-        ls -la output/
-    
-    - name: Upload artifacts
+        # Fix header - replace uint8_t with unsigned char
+        (Get-Content include/nekoarchive/aes.h) -replace 'uint8_t', 'unsigned char' | Set-Content include/nekoarchive/aes.h
+        # Remove const from ECB functions in header
+        (Get-Content include/nekoarchive/aes.h) -replace 'void AES_ECB_encrypt\(const struct AES_ctx\*', 'void AES_ECB_encrypt(struct AES_ctx*' | Set-Content include/nekoarchive/aes.h
+        (Get-Content include/nekoarchive/aes.h) -replace 'void AES_ECB_decrypt\(const struct AES_ctx\*', 'void AES_ECB_decrypt(struct AES_ctx*' | Set-Content include/nekoarchive/aes.h
+        
+        # Fix source file - replace uint8_t with unsigned char
+        (Get-Content src/crypto/aes.c) -replace 'uint8_t', 'unsigned char' | Set-Content src/crypto/aes.c
+        # Also fix the function signatures in the source to remove const from ECB
+        (Get-Content src/crypto/aes.c) -replace 'void AES_ECB_encrypt\(const struct AES_ctx\*', 'void AES_ECB_encrypt(struct AES_ctx*' | Set-Content src/crypto/aes.c
+        (Get-Content src/crypto/aes.c) -replace 'void AES_ECB_decrypt\(const struct AES_ctx\*', 'void AES_ECB_decrypt(struct AES_ctx*' | Set-Content src/crypto/aes.c
+
+    - name: Configure CMake
+      run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: nks-images
-        path: output/
+        name: NekoArchive
+        path: build/Release
