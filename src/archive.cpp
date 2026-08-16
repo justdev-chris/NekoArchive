@@ -136,7 +136,6 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
         compressor.set_password(impl->password);
     }
     
-    // First pass: compress all files
     for (const auto& filepath : input_files) {
         std::cout << "  Reading file: " << filepath << std::endl;
         std::ifstream input(filepath, std::ios::binary);
@@ -178,14 +177,13 @@ bool Archive::create(const std::string& output_path, const std::vector<std::stri
         return false;
     }
     
-    // Calculate offsets BEFORE writing index (they start after the index)
-    // We need to know the index size first
+    // Calculate offsets BEFORE writing index
     uint64_t index_size = 0;
     for (const auto& entry : impl->entries) {
         index_size += 2 + entry.name.size() + 8 + 8 + 8 + 4;
     }
     
-    uint64_t data_start = 14 + index_size; // header (4+1+1+8) + index size
+    uint64_t data_start = 14 + index_size;
     uint64_t offset = data_start;
     for (size_t i = 0; i < impl->entries.size(); ++i) {
         impl->entries[i].offset = offset;
@@ -261,14 +259,15 @@ bool Archive::extract(const std::string& archive_path, const std::string& output
         }
         
         std::cout << "  Decompressing..." << std::endl;
-        std::vector<uint8_t> decompressed = decompressor.decompress(compressed);
+        // Pass the original size to decompressor
+        std::vector<uint8_t> decompressed = decompressor.decompress(compressed, entry.original_size);
         std::cout << "  Decompressed size: " << decompressed.size() << " bytes" << std::endl;
         
         // If decompression failed (returned compressed data unchanged), try without password
         if (decompressed.size() == entry.compressed_size && !impl->password.empty()) {
             std::cout << "  Decompression with password failed, trying without..." << std::endl;
             Decompressor no_pass_decompressor;
-            decompressed = no_pass_decompressor.decompress(compressed);
+            decompressed = no_pass_decompressor.decompress(compressed, entry.original_size);
             std::cout << "  Decompressed without password: " << decompressed.size() << " bytes" << std::endl;
         }
         
